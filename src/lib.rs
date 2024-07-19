@@ -1,4 +1,3 @@
-mod actions;
 mod theme;
 mod backend;
 mod font;
@@ -9,6 +8,10 @@ use alacritty_terminal::term::TermMode;
 use alacritty_terminal::term::cell;
 use backend::BackendCommand;
 use bindings::{BindingAction, BindingsLayout, InputKind};
+use egui::Id;
+use egui::Modifiers;
+use egui::MouseWheelUnit;
+use egui::Widget;
 use egui::{Align2, Painter, Pos2, Rect, Response, Rounding, Stroke, Vec2};
 use types::Size;
 
@@ -18,39 +21,70 @@ pub use backend::settings::BackendSettings;
 pub use backend::TerminalBackend;
 pub use alacritty_terminal::event::Event as BackendEvent;
 
+const EGUI_TERM_WIDGET_ID_PREFIX: &str = "egui_term::instance::";
+
+#[derive(Debug)]
+enum InputAction {
+    BackendCall(BackendCommand),
+    Ignore,
+}
+
+#[derive(Clone, Default)]
+pub struct TerminalViewState {
+    is_dragged: bool,
+    is_focused: bool,
+    scroll_pixels: f32,
+    keyboard_modifiers: Modifiers,
+}
+
 pub struct TerminalView<'a> {
+    widget_id: Id,
     backend: &'a mut TerminalBackend,
-    layout: Response,
-    painter: Painter,
     font: TermFont,
     theme: TermTheme,
     bindings_layout: BindingsLayout,
 }
 
+impl<'a> Widget for TerminalView<'a> {
+    fn ui(self, ui: &mut egui::Ui) -> Response {
+        let (layout, painter) = ui.allocate_painter(
+            ui.available_size(),
+            egui::Sense::click(),
+        );
+
+        let widget_id = self.widget_id.clone();
+        let mut state = ui.memory(
+            |m| m.data.get_temp::<TerminalViewState>(widget_id)
+                .unwrap_or_default()
+        );
+
+        self
+            .focus(&layout)
+            .resize(&layout)
+            .process_input(&layout, &mut state)
+            .show(&layout, &painter);
+
+        ui.memory_mut(|m| m.data.insert_temp(widget_id, state));
+        layout
+    }
+}
+
 impl<'a> TerminalView<'a> {
     pub fn new(
+        ui: &mut egui::Ui,
         backend: &'a mut TerminalBackend,
-        layout: Response,
-        painter: Painter,
     ) -> Self {
+        let widget_id = ui.make_persistent_id(
+            format!("{}{}", EGUI_TERM_WIDGET_ID_PREFIX, backend.id),
+        );
+
         Self {
+            widget_id,
             backend,
-            layout,
-            painter,
             font: TermFont::default(),
             theme: TermTheme::default(),
             bindings_layout: BindingsLayout::new(),
         }
-    }
-
-    pub fn has_focus(self, enable: bool) -> Self {
-        if enable {
-            self.layout.request_focus();
-        } else {
-            self.layout.surrender_focus();
-        }
-
-        self
     }
 
     pub fn set_theme(mut self, theme: TermTheme) -> Self {
@@ -63,23 +97,31 @@ impl<'a> TerminalView<'a> {
         self
     }
 
-    pub fn resize_handler(self) -> Self {
+    fn focus(self, layout: &Response) -> Self {
+        if layout.clicked() {
+            layout.request_focus();
+        }
+
+        self
+    }
+
+    fn resize(self, layout: &Response) -> Self {
         self.backend.process_command(
             backend::BackendCommand::Resize(
-                Size::from(self.layout.rect.size()),
-                self.font.font_measure(&self.layout.ctx),
+                Size::from(layout.rect.size()),
+                self.font.font_measure(&layout.ctx),
             )
         );
 
         self
     }
 
-    pub fn input_handler(self) -> Self {
-        if !self.layout.has_focus() {
+    fn process_input(self, layout: &Response, state: &mut TerminalViewState) -> Self {
+        if !layout.has_focus() {
             return self;
         }
 
-        self.layout.ctx.input(|i| {
+        layout.ctx.input(|i| {
             for event in &i.events {
                 let input_action = match event {
                     egui::Event::Text(_) | egui::Event::Key { .. } => handle_keyboard_event(
@@ -87,6 +129,13 @@ impl<'a> TerminalView<'a> {
                         &self.bindings_layout,
                         self.backend.last_content().terminal_mode,
                     ),
+                    egui::Event::MouseWheel {
+                        unit,
+                        delta,
+                        ..
+                    } => handle_mouse_wheel(state, self.font.font_type().size, unit, delta),
+                    egui::Event::PointerButton {  }
+                    egui::Event::MouseMoved(pos) => InputAction::Ignore,
                     _ => InputAction::Ignore,
                 };
 
@@ -102,10 +151,10 @@ impl<'a> TerminalView<'a> {
         self
     }
 
-    pub fn show(self) {
+    fn show(self, layout: &Response, painter: &Painter) {
         let content = self.backend.sync();
-        let layout_offset = self.layout.rect.min;
-        let font_size = self.font.font_measure(&self.layout.ctx);
+        let layout_offset = layout.rect.min;
+        let font_size = self.font.font_measure(&layout.ctx);
         for indexed in content.grid.display_iter() {
             let x = layout_offset.x
                 + (indexed.point.column.0 as f32 * font_size.width);
@@ -125,7 +174,7 @@ impl<'a> TerminalView<'a> {
                 std::mem::swap(&mut fg, &mut bg);
             }
     
-            self.painter.rect(
+            painter.rect(
                 Rect::from_min_size(
                     Pos2::new(x, y), 
                     Vec2::new(font_size.width, font_size.height),
@@ -140,7 +189,7 @@ impl<'a> TerminalView<'a> {
                         x: x + (font_size.width / 2.0),
                         y: y + (font_size.height / 2.0),
                 };
-                self.painter.text(
+                painter.text(
                     pos, 
                     Align2::CENTER_CENTER, 
                     indexed.c, 
@@ -152,28 +201,21 @@ impl<'a> TerminalView<'a> {
     }
 }
 
-enum InputAction {
-    BackendCall(BackendCommand),
-    Ignore,
-}
-
 fn handle_keyboard_event(
     event: &egui::Event,
     bindings_layout: &BindingsLayout,
     term_mode: TermMode,
 ) -> InputAction {    
     let mut action = InputAction::Ignore;
-
     match event {
         egui::Event::Text(c) => {
             action = InputAction::BackendCall(BackendCommand::Write(c.as_bytes().to_vec()))
         },
         egui::Event::Key {
             key,
-            physical_key,
             pressed,
-            repeat,
-            modifiers
+            modifiers,
+            ..
         } => {
             if !pressed {
                 return action;
@@ -198,21 +240,6 @@ fn handle_keyboard_event(
                         BackendCommand::Write(seq.as_bytes().to_vec()),
                     );
                 },
-                // BindingAction::Paste => {
-                //     if let Some(data) = clipboard.read(ClipboardKind::Standard)
-                //     {
-                //         let input: Vec<u8> = data.bytes().collect();
-                //         return Some(Command::ProcessBackendCommand(
-                //             BackendCommand::Write(input),
-                //         ));
-                //     }
-                // },
-                // BindingAction::Copy => {
-                //     clipboard.write(
-                //         ClipboardKind::Standard,
-                //         backend.selectable_content(),
-                //     );
-                // },
                 _ => {},
             };
         }
@@ -220,4 +247,29 @@ fn handle_keyboard_event(
     }
 
     action
+}
+
+fn handle_mouse_wheel(
+    state: &mut TerminalViewState,
+    font_size: f32,
+    unit: &MouseWheelUnit,
+    delta: &Vec2,
+) -> InputAction {
+    match unit {
+        MouseWheelUnit::Line => {
+            let lines = delta.y.signum() * delta.y.abs().ceil();
+            InputAction::BackendCall(BackendCommand::Scroll(lines as i32))
+        },
+        MouseWheelUnit::Point => {
+            state.scroll_pixels -= delta.y;
+            let lines = (state.scroll_pixels / font_size).trunc();
+            state.scroll_pixels %= font_size;
+            if lines != 0.0 {
+                InputAction::BackendCall(BackendCommand::Scroll(lines as i32))
+            } else {
+                InputAction::Ignore
+            }
+        },
+        MouseWheelUnit::Page => InputAction::Ignore,
+    }
 }

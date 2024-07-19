@@ -10,7 +10,7 @@ pub struct FontSettings {
 impl Default for FontSettings {
     fn default() -> Self {
         Self {
-            font_type: FontId::monospace(14.0),
+            font_type: FontId::monospace(20.0),
         }
     }
 }

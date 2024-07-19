@@ -3,7 +3,7 @@ pub mod settings;
 use alacritty_terminal::event::{
     Event, EventListener, Notify, OnResize, WindowSize,
 };
-use alacritty_terminal::event_loop::{EventLoop, Msg, Notifier};
+use alacritty_terminal::event_loop::{EventLoop, Msg, Notifier, State};
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Column, Direction, Line, Point, Side};
 use alacritty_terminal::selection::{Selection, SelectionRange, SelectionType};
@@ -19,9 +19,10 @@ use std::cmp::min;
 use std::io::Result;
 use std::ops::{Index, RangeInclusive};
 use std::sync::{Arc, mpsc};
-
-use crate::actions::Action;
+use std::thread::JoinHandle;
 use crate::types::Size;
+
+type AlacrityEventLoop = (EventLoop<tty::Pty, EventProxy>, State);
 
 #[derive(Debug, Clone)]
 pub enum BackendCommand {
@@ -32,7 +33,13 @@ pub enum BackendCommand {
     SelectUpdate((f32, f32)),
     ProcessLink(LinkAction, Point),
     MouseReport(MouseMode, MouseButton, Point, bool),
-    ProcessAlacrittyEvent(Event),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Action {
+    Shutdown,
+    ChangeTitle(String),
+    Ignore,
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +96,10 @@ impl Dimensions for TerminalSize {
         self.screen_lines()
     }
 
+    fn screen_lines(&self) -> usize {
+        self.num_lines as usize
+    }
+
     fn columns(&self) -> usize {
         self.num_cols as usize
     }
@@ -99,10 +110,6 @@ impl Dimensions for TerminalSize {
 
     fn bottommost_line(&self) -> Line {
         Line(self.num_lines as i32 - 1)
-    }
-
-    fn screen_lines(&self) -> usize {
-        self.num_lines as usize
     }
 }
 
@@ -118,17 +125,20 @@ impl From<TerminalSize> for WindowSize {
 }
 
 pub struct TerminalBackend {
+    pub id: u64,
+    pub url_regex: RegexSearch,
     term: Arc<FairMutex<Term<EventProxy>>>,
     size: TerminalSize,
     notifier: Notifier,
     last_content: RenderableContent,
-    pub url_regex: RegexSearch,
+    _pty_event_loop: JoinHandle<AlacrityEventLoop>,
+    _pty_event_subscription: JoinHandle<()>,
 }
 
 impl TerminalBackend {
     pub fn new(
         id: u64,
-        event_sender: mpsc::Sender<Event>,
+        app_context: egui::Context,
         settings: BackendSettings,
     ) -> Result<Self> {
         let pty_config = tty::Options {
@@ -141,34 +151,45 @@ impl TerminalBackend {
             cell_height: settings.font_size.height as u16,
             ..TerminalSize::default()
         };
-
         let pty = tty::new(&pty_config, terminal_size.into(), id)?;
+        let (event_sender, event_receiver) = mpsc::channel();
         let event_proxy = EventProxy(event_sender);
-
         let mut term = Term::new(config, &terminal_size, event_proxy.clone());
-        let cursor = term.grid_mut().cursor_cell().clone();
         let initial_content = RenderableContent {
             grid: term.grid().clone(),
             selectable_range: None,
             terminal_mode: *term.mode(),
             terminal_size,
-            cursor: cursor.clone(),
+            cursor: term.grid_mut().cursor_cell().clone(),
             hovered_hyperlink: None,
         };
-
         let term = Arc::new(FairMutex::new(term));
         let pty_event_loop =
             EventLoop::new(term.clone(), event_proxy, pty, false, false)?;
         let notifier = Notifier(pty_event_loop.channel());
-        let _pty_join_handle = pty_event_loop.spawn();
         let url_regex = RegexSearch::new(r#"(ipfs:|ipns:|magnet:|mailto:|gemini://|gopher://|https://|http://|news:|file://|git://|ssh:|ftp://)[^\u{0000}-\u{001F}\u{007F}-\u{009F}<>"\s{-}\^⟨⟩`]+"#).unwrap();
+        let pty_event_subscription = std::thread::Builder::new()
+            .name(format!("pty_event_subscription_{}", id))
+            .spawn(move || {
+                loop {
+                    if let Ok(event) = event_receiver.recv() {
+                        app_context.clone().request_repaint();
+                        if let Event::Exit = event {
+                            break;
+                        }
+                    }
+                }
+            }).unwrap();
 
         Ok(Self {
+            id,
+            url_regex,
             term: term.clone(),
             size: terminal_size,
             notifier,
             last_content: initial_content,
-            url_regex,
+            _pty_event_loop: pty_event_loop.spawn(),
+            _pty_event_subscription: pty_event_subscription,
         })
     }
 
@@ -177,44 +198,24 @@ impl TerminalBackend {
         let term = self.term.clone();
         let mut term = term.lock();
         match cmd {
-            BackendCommand::ProcessAlacrittyEvent(event) => {
-                match event {
-                    Event::Wakeup => {
-                        self.internal_sync(&mut term);
-                        action = Action::Redraw;
-                    },
-                    Event::Exit => {
-                        action = Action::Shutdown;
-                    },
-                    Event::Title(title) => {
-                        action = Action::ChangeTitle(title);
-                    },
-                    _ => {},
-                };
-            },
             BackendCommand::Write(input) => {
                 self.write(input);
                 term.scroll_display(Scroll::Bottom);
             },
             BackendCommand::Scroll(delta) => {
                 self.scroll(&mut term, delta);
-                self.internal_sync(&mut term);
-                action = Action::Redraw;
             },
             BackendCommand::Resize(layout_size, font_size) => {
                 self.resize(&mut term, layout_size, font_size);
-                action = Action::Redraw;
             },
             BackendCommand::SelectStart(selection_type, (x, y)) => {
                 self.start_selection(&mut term, selection_type, x, y);
-                action = Action::Redraw;
             },
             BackendCommand::SelectUpdate((x, y)) => {
                 self.update_selection(&mut term, x, y);
-                action = Action::Redraw;
             },
             BackendCommand::ProcessLink(link_action, point) => {
-                action = self.process_link_action(&term, link_action, point);
+                self.process_link_action(&term, link_action, point);
             },
             BackendCommand::MouseReport(mode, button, point, pressed) => {
                 match mode {
@@ -223,7 +224,6 @@ impl TerminalBackend {
                     },
                     MouseMode::Normal => {},
                 }
-                action = Action::Redraw;
             },
         };
 
@@ -235,8 +235,7 @@ impl TerminalBackend {
         terminal: &Term<EventProxy>,
         link_action: LinkAction,
         point: Point,
-    ) -> Action {
-        let mut action = Action::Ignore;
+    ) {
         match link_action {
             LinkAction::Hover => {
                 self.last_content.hovered_hyperlink = self.regex_match_at(
@@ -244,18 +243,14 @@ impl TerminalBackend {
                     point,
                     &mut self.url_regex.clone(),
                 );
-                action = Action::Redraw;
             },
             LinkAction::Clear => {
                 self.last_content.hovered_hyperlink = None;
-                action = Action::Redraw;
             },
             LinkAction::Open => {
                 self.open_link();
             },
         };
-
-        action
     }
 
     fn open_link(&self) {
@@ -370,9 +365,9 @@ impl TerminalBackend {
         }
 
         let lines = (layout_size.height / font_size.height)
-            .floor() as u16;
+             as u16;
         let cols = (layout_size.width / font_size.width)
-            .floor() as u16;
+             as u16;
         if lines > 0 && cols > 0 {
             self.size = TerminalSize {
                 layout_size,
@@ -410,7 +405,7 @@ impl TerminalBackend {
                     content.push(line_cmd);
                 }
 
-                // self.notifier.notify(content);
+                self.notifier.notify(content);
             } else {
                 terminal.grid_mut().scroll_display(scroll);
             }
@@ -521,6 +516,6 @@ pub struct EventProxy(mpsc::Sender<Event>);
 
 impl EventListener for EventProxy {
     fn send_event(&self, event: Event) {
-        let _ = self.0.send(event);
+        let _ = self.0.send(event.clone());
     }
 }

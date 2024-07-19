@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::mpsc::{self, Receiver, Sender}, thread::JoinHandle};
+use std::{collections::BTreeMap, sync::mpsc::{self, Receiver, Sender}, thread::JoinHandle};
 use egui_term::{TerminalBackend, TerminalView};
 
 #[derive(Debug, Clone)]
@@ -9,59 +9,46 @@ pub enum Command {
 pub struct App {
     command_sender: Sender<Command>,
     command_receiver: Receiver<Command>,
-    active_tab: u64,
-    terminal_tabs: HashMap<u64, (TerminalBackend, JoinHandle<()>)>,
+    tab_manager: TabManager
 }
 
 impl App {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(_: &eframe::CreationContext<'_>) -> Self {
         let (command_sender, command_receiver) = mpsc::channel();
         Self {
             command_sender,
             command_receiver,
-            active_tab: 0,
-            terminal_tabs: HashMap::new()
+            tab_manager: TabManager::new(),
         }
-    }
-
-    fn create_tab(&mut self, ctx: egui::Context) {
-        let new_tab_id = self.terminal_tabs.len() as u64;
-        let (event_tx, event_rx) = mpsc::channel();
-        let terminal_backend = TerminalBackend::new(
-            new_tab_id,
-            event_tx,
-            egui_term::BackendSettings::default(),
-        ).unwrap();
-
-        let sender = self.command_sender.clone();
-        let event_listener = std::thread::Builder::new()
-            .name(format!("backend_event_listener_{}", new_tab_id))
-            .spawn(move || {
-                loop {
-                    if let Ok(e) = event_rx.recv() {
-                        sender.send(Command::BackendEventReceived(new_tab_id, e)).unwrap();
-                        ctx.clone().request_repaint();
-                    }
-                }
-            }).unwrap();
-
-        let _ = self.terminal_tabs.insert(new_tab_id, (terminal_backend, event_listener));
     }
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if let Ok(command) = self.command_receiver.try_recv() {
+            match command {
+                Command::BackendEventReceived(id, event) => match event {
+                    egui_term::BackendEvent::Exit => {
+                        self.tab_manager.remove(id);
+                    },
+                    _ => {}
+                }
+            }
+        }
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                for (i, tab) in self.terminal_tabs.iter().enumerate() {
-                    if ui.button(format!("{}", tab.0)).clicked() {
-                        self.active_tab = tab.0.clone();
-                        println!("Switched to {}", tab.0);
+                let tab_ids = self.tab_manager.get_tab_ids();
+                for id in tab_ids {
+                    if ui.button(format!("{}", id))
+                        .clicked()
+                    {
+                        self.tab_manager.set_active(id.clone());
                     }
                 }
 
                 if ui.button("+").clicked() {
-                    self.create_tab(ctx.clone());
+                    self.tab_manager.add(self.command_sender.clone(), ctx.clone());
                 }
             });
         });
@@ -72,9 +59,9 @@ impl eframe::App for App {
                 egui::Sense::click(),
             );
 
-            if let Some(backend) = self.terminal_tabs.get_mut(&self.active_tab) {
+            if let Some(tab) = self.tab_manager.get_active() {
                 TerminalView::new(
-                    &mut backend.0,
+                    &mut tab.backend,
                     response,
                     painter,
                 )
@@ -84,5 +71,110 @@ impl eframe::App for App {
                     .show()
             }
         });
+    }
+}
+
+struct TabManager {
+    active_tab_id: Option<u64>,
+    tabs: BTreeMap<u64, Tab>,
+}
+
+impl TabManager {
+    fn new() -> Self {
+        Self {
+            active_tab_id: None,
+            tabs: BTreeMap::new()
+        }
+    }
+
+    fn add(&mut self, command_sender: Sender<Command>, ctx: egui::Context) {
+        let id = self.tabs.len() as u64;
+        let tab = Tab::new(ctx, command_sender, id);
+        self.tabs.insert(id, tab);
+        self.active_tab_id = Some(id)
+    }
+
+    fn remove(&mut self, id: u64) {
+        if self.tabs.len() == 0 {
+            return;
+        }
+
+        self.tabs.remove(&id).unwrap();
+        self.active_tab_id = if let Some(next_tab) = self.tabs
+            .iter()
+            .skip_while(|t| t.0 <= &id)
+            .next()
+        {
+            Some(next_tab.0.clone())
+        } else if let Some(last_tab) = self.tabs.last_key_value() {
+            Some(last_tab.0.clone())
+        } else {
+            None
+        };
+    }
+
+    fn get_active(&mut self) -> Option<&mut Tab> {
+        if self.active_tab_id.is_none() {
+            return None;
+        }
+
+        if let Some(tab) = self.tabs.get_mut(
+            &self.active_tab_id.unwrap()
+        ) {
+            return Some(tab);
+        }
+
+        None
+    }
+
+    fn get_tab_ids(&self) -> Vec<u64> {
+        self.tabs
+            .keys()
+            .map(|x| *x)
+            .collect()
+    }
+
+    fn set_active(&mut self, id: u64) {
+        if id as usize > self.tabs.len() {
+            return;
+        }
+
+        self.active_tab_id = Some(id);
+    }
+}
+
+struct Tab {
+    backend: TerminalBackend,
+    _event_listener: JoinHandle<()>,
+}
+
+impl Tab {
+    fn new(ctx: egui::Context, command_sender: Sender<Command>, id: u64) -> Self {
+        let (event_tx, event_rx) = mpsc::channel();
+        let backend = TerminalBackend::new(
+            id as u64,
+            event_tx,
+            egui_term::BackendSettings::default(),
+        ).unwrap();
+
+        let _event_listener = std::thread::Builder::new()
+            .name(format!("backend_event_listener_{}", id))
+            .spawn(move || {
+                loop {
+                    if let Ok(e) = event_rx.recv() {
+                        command_sender.send(Command::BackendEventReceived(id as u64, e.clone())).unwrap();
+                        match e {
+                            egui_term::BackendEvent::Exit => { break; },
+                            _ => {},
+                        }
+                        ctx.clone().request_repaint();
+                    }
+                }
+            }).unwrap();
+
+            Self {
+                backend,
+                _event_listener,
+            }
     }
 }
