@@ -20,6 +20,8 @@ use std::io::Result;
 use std::ops::{Index, RangeInclusive};
 use std::sync::{Arc, mpsc};
 use std::thread::JoinHandle;
+use alacritty_terminal::vte::ansi::Handler;
+use egui::Modifiers;
 use crate::types::Size;
 
 type AlacrityEventLoop = (EventLoop<tty::Pty, EventProxy>, State);
@@ -32,7 +34,7 @@ pub enum BackendCommand {
     SelectStart(SelectionType, (f32, f32)),
     SelectUpdate((f32, f32)),
     ProcessLink(LinkAction, Point),
-    MouseReport(MouseMode, MouseButton, Point, bool),
+    MouseReport(MouseMode, MouseButton, Modifiers, Point, bool),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -217,12 +219,29 @@ impl TerminalBackend {
             BackendCommand::ProcessLink(link_action, point) => {
                 self.process_link_action(&term, link_action, point);
             },
-            BackendCommand::MouseReport(mode, button, point, pressed) => {
+            BackendCommand::MouseReport(mode, button, modifiers, point, pressed) => {
+                let mut mods = 0;
+                if modifiers.contains(Modifiers::SHIFT) {
+                    mods += 4;
+                }
+                if modifiers.contains(Modifiers::ALT) {
+                    mods += 8;
+                }
+                if modifiers.contains(Modifiers::COMMAND) {
+                    mods += 16;
+                }
+
                 match mode {
                     MouseMode::Sgr => {
-                        self.sgr_mouse_report(point, button, pressed)
+                        self.sgr_mouse_report(point, button as u8 + mods, pressed)
                     },
-                    MouseMode::Normal => {},
+                    MouseMode::Normal => {
+                        if pressed {
+                            self.normal_mouse_report(point, button as u8 + mods)
+                        } else {
+                            self.normal_mouse_report(point, 3 + mods)
+                        }
+                    },
                 }
             },
         };
@@ -266,29 +285,63 @@ impl TerminalBackend {
                 }
             }
 
-            // open::that(url).unwrap_or_else(|_| {
-            //     panic!("link opening is failed");
-            // })
+            open::that(url).unwrap_or_else(|_| {
+                panic!("link opening is failed");
+            })
         }
     }
 
     fn sgr_mouse_report(
         &self,
         point: Point,
-        button: MouseButton,
+        button: u8,
         pressed: bool,
     ) {
         let c = if pressed { 'M' } else { 'm' };
 
         let msg = format!(
             "\x1b[<{};{};{}{}",
-            button as u8,
+            button,
             point.column + 1,
             point.line + 1,
             c
         );
 
         self.notifier.notify(msg.as_bytes().to_vec());
+    }
+
+    fn normal_mouse_report(&self, point: Point, button: u8) {
+        let Point { line, column } = point;
+        let utf8 = self.last_content.terminal_mode.contains(TermMode::UTF8_MOUSE);
+
+        let max_point = if utf8 { 2015 } else { 223 };
+
+        if line >= max_point || column >= max_point {
+            return;
+        }
+
+        let mut msg = vec![b'\x1b', b'[', b'M', 32 + button];
+
+        let mouse_pos_encode = |pos: usize| -> Vec<u8> {
+            let pos = 32 + 1 + pos;
+            let first = 0xC0 + pos / 64;
+            let second = 0x80 + (pos & 63);
+            vec![first as u8, second as u8]
+        };
+
+        if utf8 && column >= Column(95) {
+            msg.append(&mut mouse_pos_encode(column.0));
+        } else {
+            msg.push(32 + 1 + column.0 as u8);
+        }
+
+        if utf8 && line >= 95 {
+            msg.append(&mut mouse_pos_encode(line.0 as usize));
+        } else {
+            msg.push(32 + 1 + line.0 as u8);
+        }
+
+        self.notifier.notify(msg);
     }
 
     fn start_selection(

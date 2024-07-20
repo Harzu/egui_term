@@ -10,7 +10,7 @@ pub struct FontSettings {
 impl Default for FontSettings {
     fn default() -> Self {
         Self {
-            font_type: FontId::monospace(20.0),
+            font_type: FontId::monospace(30.0),
         }
     }
 }
@@ -41,7 +41,7 @@ impl TermFont {
 
     pub fn font_measure(&self, ctx: &Context) -> Size {
         let (width, height) = ctx.fonts(|f| (
-            f.glyph_width(&self.font_type, 'm'),
+            f.glyph_width(&self.font_type, 'M'),
             f.row_height(&self.font_type))
         );
 
