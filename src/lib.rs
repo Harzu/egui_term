@@ -6,9 +6,10 @@ mod bindings;
 
 use alacritty_terminal::term::TermMode;
 use alacritty_terminal::term::cell;
+use alacritty_terminal::index::Point as TerminalGridPoint;
 use backend::BackendCommand;
 use bindings::{BindingAction, BindingsLayout, InputKind};
-use egui::Id;
+use egui::{Button, Id, PointerButton, PointerState};
 use egui::Modifiers;
 use egui::MouseWheelUnit;
 use egui::Widget;
@@ -20,6 +21,8 @@ pub use theme::TermTheme;
 pub use backend::settings::BackendSettings;
 pub use backend::TerminalBackend;
 pub use alacritty_terminal::event::Event as BackendEvent;
+use alacritty_terminal::selection::SelectionType;
+use crate::backend::{LinkAction, MouseButton, MouseMode};
 
 const EGUI_TERM_WIDGET_ID_PREFIX: &str = "egui_term::instance::";
 
@@ -29,11 +32,12 @@ enum InputAction {
     Ignore,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct TerminalViewState {
     is_dragged: bool,
     is_focused: bool,
     scroll_pixels: f32,
+    current_mouse_position_on_grid: TerminalGridPoint,
     keyboard_modifiers: Modifiers,
 }
 
@@ -124,7 +128,7 @@ impl<'a> TerminalView<'a> {
         layout.ctx.input(|i| {
             for event in &i.events {
                 let input_action = match event {
-                    egui::Event::Text(_) | egui::Event::Key { .. } => handle_keyboard_event(
+                    egui::Event::Text(_) | egui::Event::Key { .. } => process_keyboard_event(
                         event,
                         &self.bindings_layout,
                         self.backend.last_content().terminal_mode,
@@ -133,9 +137,15 @@ impl<'a> TerminalView<'a> {
                         unit,
                         delta,
                         ..
-                    } => handle_mouse_wheel(state, self.font.font_type().size, unit, delta),
-                    egui::Event::PointerButton {  }
-                    egui::Event::MouseMoved(pos) => InputAction::Ignore,
+                    } => process_mouse_wheel(state, self.font.font_type().size, unit, delta),
+                    egui::Event::PointerButton {
+                        button,
+                        pressed,
+                        modifiers,
+                        pos,
+                        ..
+                    } => process_button_click(state, layout, self.backend, &i.pointer, button, pos, modifiers, pressed),
+                    egui::Event::PointerMoved(pos) => process_mouse_move(state, layout, self.backend, pos, &i.modifiers),
                     _ => InputAction::Ignore,
                 };
 
@@ -201,15 +211,17 @@ impl<'a> TerminalView<'a> {
     }
 }
 
-fn handle_keyboard_event(
+fn process_keyboard_event(
     event: &egui::Event,
     bindings_layout: &BindingsLayout,
     term_mode: TermMode,
 ) -> InputAction {    
     let mut action = InputAction::Ignore;
     match event {
-        egui::Event::Text(c) => {
-            action = InputAction::BackendCall(BackendCommand::Write(c.as_bytes().to_vec()))
+        egui::Event::Text(text) => {
+            action = InputAction::BackendCall(
+                BackendCommand::Write(text.as_bytes().to_vec())
+            );
         },
         egui::Event::Key {
             key,
@@ -249,7 +261,7 @@ fn handle_keyboard_event(
     action
 }
 
-fn handle_mouse_wheel(
+fn process_mouse_wheel(
     state: &mut TerminalViewState,
     font_size: f32,
     unit: &MouseWheelUnit,
@@ -272,4 +284,187 @@ fn handle_mouse_wheel(
         },
         MouseWheelUnit::Page => InputAction::Ignore,
     }
+}
+
+fn process_button_click(
+    state: &mut TerminalViewState,
+    layout: &Response,
+    backend: &TerminalBackend,
+    pointer_state: &PointerState,
+    button: &PointerButton,
+    position: &Pos2,
+    modifiers: &Modifiers,
+    pressed: &bool,
+) -> InputAction {
+    match button {
+        PointerButton::Primary => process_left_button(
+            state,
+            layout,
+            backend,
+            pointer_state,
+            position,
+            modifiers,
+            pressed,
+        ),
+        _ => InputAction::Ignore
+    }
+}
+
+fn process_left_button(
+    state: &mut TerminalViewState,
+    layout: &Response,
+    backend: &TerminalBackend,
+    pointer_state: &PointerState,
+    position: &Pos2,
+    modifiers: &Modifiers,
+    pressed: &bool,
+) -> InputAction {
+    let action = if *pressed {
+        process_left_button_pressed(
+            state,
+            layout,
+            backend,
+            pointer_state,
+            position,
+            modifiers,
+        )
+    } else {
+        process_left_button_released(state, backend, modifiers)
+    };
+
+    action
+}
+
+fn process_left_button_pressed(
+    state: &mut TerminalViewState,
+    layout: &Response,
+    backend: &TerminalBackend,
+    pointer_state: &PointerState,
+    position: &Pos2,
+    modifiers: &Modifiers
+) -> InputAction {
+    let terminal_mode = backend.last_content().terminal_mode;
+    let action = if terminal_mode.contains(TermMode::SGR_MOUSE) && modifiers.is_none() {
+        InputAction::BackendCall(
+            BackendCommand::MouseReport(
+                MouseMode::Sgr,
+                MouseButton::LeftButton,
+                state.current_mouse_position_on_grid,
+                true
+            )
+        )
+    } else {
+        let selection_type = if pointer_state.button_double_clicked(PointerButton::Primary) {
+            SelectionType::Semantic
+        } else if pointer_state.button_triple_clicked(PointerButton::Primary) {
+            SelectionType::Lines
+        } else {
+            SelectionType::Simple
+        };
+
+        InputAction::BackendCall(
+            BackendCommand::SelectStart(
+                selection_type,
+                (
+                    position.x - layout.rect.min.x,
+                    position.y - layout.rect.min.y,
+                )
+            )
+        )
+    };
+
+    state.is_dragged = true;
+    action
+}
+
+fn process_left_button_released(
+    state: &mut TerminalViewState,
+    backend: &TerminalBackend,
+    modifiers: &Modifiers
+) -> InputAction {
+    state.is_dragged = false;
+    let terminal_content = backend.last_content();
+    if terminal_content.terminal_mode.contains(TermMode::SGR_MOUSE) {
+        return InputAction::BackendCall(
+            BackendCommand::MouseReport(
+                MouseMode::Sgr,
+                MouseButton::LeftButton,
+                state.current_mouse_position_on_grid,
+                false,
+            ),
+        );
+    }
+
+    // if bindings.get_action(
+    //     InputKind::Mouse(iced_core::mouse::Button::Left),
+    //     state.keyboard_modifiers,
+    //     *terminal_mode,
+    // ) == BindingAction::LinkOpen
+    // {
+    //     commands.push(Command::ProcessBackendCommand(
+    //         BackendCommand::ProcessLink(
+    //             LinkAction::Open,
+    //             state.mouse_position_on_grid,
+    //         ),
+    //     ));
+    // }
+
+    InputAction::Ignore
+}
+
+fn process_mouse_move(
+    state: &mut TerminalViewState,
+    layout: &Response,
+    backend: &TerminalBackend,
+    position: &Pos2,
+    modifiers: &Modifiers
+) -> InputAction {
+    let terminal_content = backend.last_content();
+    let cursor_x = position.x - layout.rect.min.x;
+    let cursor_y = position.y - layout.rect.min.y;
+    state.current_mouse_position_on_grid = TerminalBackend::selection_point(
+        cursor_x,
+        cursor_y,
+        &terminal_content.terminal_size,
+        terminal_content.grid.display_offset(),
+    );
+
+    println!("{} {} {:?}", position.x, position.y, state);
+
+    // Handle command or selection update based on terminal mode and modifiers
+    if state.is_dragged {
+        let terminal_mode = terminal_content.terminal_mode;
+        let cmd = if terminal_mode.contains(TermMode::SGR_MOUSE)
+            && modifiers.is_none()
+        {
+            InputAction::BackendCall(
+                    BackendCommand::MouseReport(
+                    MouseMode::Sgr,
+                    MouseButton::LeftMove,
+                    state.current_mouse_position_on_grid,
+                    true,
+                )
+            )
+        } else {
+            InputAction::BackendCall(
+                BackendCommand::SelectUpdate((
+                    cursor_x, cursor_y,
+                ))
+            )
+        };
+
+        return cmd
+    }
+
+    // Handle link hover if applicable
+    if let Modifiers::COMMAND = *modifiers {
+        return InputAction::BackendCall(
+            BackendCommand::ProcessLink(
+                LinkAction::Hover,
+                state.current_mouse_position_on_grid,
+            ),
+        )
+    }
+
+    InputAction::Ignore
 }
