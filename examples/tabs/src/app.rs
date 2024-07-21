@@ -1,14 +1,9 @@
-use std::{collections::BTreeMap, sync::mpsc::{self, Receiver, Sender}, thread::JoinHandle};
-use egui_term::{TerminalBackend, TerminalView};
-
-#[derive(Debug, Clone)]
-pub enum Command {
-    BackendEventReceived(u64, egui_term::BackendEvent)
-}
+use std::{collections::BTreeMap, sync::mpsc::{self, Receiver, Sender}};
+use egui_term::{PtyEvent, TerminalBackend, TerminalView};
 
 pub struct App {
-    command_sender: Sender<Command>,
-    command_receiver: Receiver<Command>,
+    command_sender: Sender<(u64, egui_term::PtyEvent)>,
+    command_receiver: Receiver<(u64, egui_term::PtyEvent)>,
     tab_manager: TabManager
 }
 
@@ -24,15 +19,20 @@ impl App {
 }
 
 impl eframe::App for App {
+    fn on_exit(&mut self) {
+        self.tab_manager.clear();
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if let Ok(command) = self.command_receiver.try_recv() {
-            match command {
-                Command::BackendEventReceived(id, event) => match event {
-                    egui_term::BackendEvent::Exit => {
-                        self.tab_manager.remove(id);
-                    },
-                    _ => {}
+        if let Ok((tab_id, event)) = self.command_receiver.try_recv() {
+            match event {
+                egui_term::PtyEvent::Exit => {
+                    self.tab_manager.remove(tab_id);
+                },
+                egui_term::PtyEvent::Title(title) => {
+                    self.tab_manager.set_title(tab_id, title);
                 }
+                _ => {}
             }
         }
 
@@ -40,35 +40,31 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 let tab_ids = self.tab_manager.get_tab_ids();
                 for id in tab_ids {
-                    if ui.button(format!("{}", id))
+                    let tab_title = if let Some(title) = self.tab_manager.get_title(id) {
+                        title
+                    } else {
+                        String::from("unknown")
+                    };
+                    if ui.button(format!("{}", tab_title))
                         .clicked()
                     {
                         self.tab_manager.set_active(id.clone());
                     }
                 }
 
-                if ui.button("+").clicked() {
+                if ui.button("[+]").clicked() {
                     self.tab_manager.add(self.command_sender.clone(), ctx.clone());
                 }
             });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            let (response, painter) = ui.allocate_painter(
-                egui::Vec2::new(ui.available_width(), ui.available_height()),
-                egui::Sense::click(),
-            );
-
             if let Some(tab) = self.tab_manager.get_active() {
-                TerminalView::new(
-                    &mut tab.backend,
-                    response,
-                    painter,
-                )
-                    .resize_handler()
-                    .input_handler()
-                    .has_focus(true)
-                    .show()
+                let terminal = TerminalView::new(ui, &mut tab.backend)
+                    .set_focus(true)
+                    .set_size(ui.available_size());
+
+                ui.add(terminal);
             }
         });
     }
@@ -87,7 +83,7 @@ impl TabManager {
         }
     }
 
-    fn add(&mut self, command_sender: Sender<Command>, ctx: egui::Context) {
+    fn add(&mut self, command_sender: Sender<(u64, PtyEvent)>, ctx: egui::Context) {
         let id = self.tabs.len() as u64;
         let tab = Tab::new(ctx, command_sender, id);
         self.tabs.insert(id, tab);
@@ -111,6 +107,24 @@ impl TabManager {
         } else {
             None
         };
+    }
+
+    fn clear(&mut self) {
+        self.tabs.clear();
+    }
+
+    fn set_title(&mut self, id: u64, title: String) {
+        if let Some(tab) = self.tabs.get_mut(&id) {
+            tab.set_title(title);
+        }
+    }
+
+    fn get_title(&mut self, id: u64) -> Option<String> {
+        if let Some(tab) = self.tabs.get(&id) {
+            Some(tab.title.clone())
+        } else {
+            None
+        }
     }
 
     fn get_active(&mut self) -> Option<&mut Tab> {
@@ -145,36 +159,32 @@ impl TabManager {
 
 struct Tab {
     backend: TerminalBackend,
-    _event_listener: JoinHandle<()>,
+    title: String,
 }
 
 impl Tab {
-    fn new(ctx: egui::Context, command_sender: Sender<Command>, id: u64) -> Self {
-        let (event_tx, event_rx) = mpsc::channel();
+    fn new(ctx: egui::Context, command_sender: Sender<(u64, PtyEvent)>, id: u64) -> Self {
+        let system_shell = std::env::var("SHELL")
+            .expect("SHELL variable is not defined")
+            .to_string();
+        
         let backend = TerminalBackend::new(
             id as u64,
-            event_tx,
-            egui_term::BackendSettings::default(),
+            ctx,
+            command_sender,
+            egui_term::BackendSettings {
+                shell: system_shell,
+                ..egui_term::BackendSettings::default()
+            },
         ).unwrap();
 
-        let _event_listener = std::thread::Builder::new()
-            .name(format!("backend_event_listener_{}", id))
-            .spawn(move || {
-                loop {
-                    if let Ok(e) = event_rx.recv() {
-                        command_sender.send(Command::BackendEventReceived(id as u64, e.clone())).unwrap();
-                        match e {
-                            egui_term::BackendEvent::Exit => { break; },
-                            _ => {},
-                        }
-                        ctx.clone().request_repaint();
-                    }
-                }
-            }).unwrap();
+        Self {
+            backend,
+            title: format!("tab: {}", id),
+        }
+    }
 
-            Self {
-                backend,
-                _event_listener,
-            }
+    fn set_title(&mut self, title: String) {
+        self.title = title;
     }
 }

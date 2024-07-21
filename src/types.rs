@@ -12,7 +12,7 @@ impl Size {
     }
 }
 
-impl From<Vec2> for  Size {
+impl From<Vec2> for Size {
     fn from(value: Vec2) -> Self {
         Self {
             width: value.x,

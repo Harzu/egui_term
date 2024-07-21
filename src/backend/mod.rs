@@ -1,54 +1,60 @@
 pub mod settings;
 
+use crate::types::Size;
 use alacritty_terminal::event::{
     Event, EventListener, Notify, OnResize, WindowSize,
 };
-use alacritty_terminal::event_loop::{EventLoop, Msg, Notifier, State};
+use alacritty_terminal::event_loop::{EventLoop, Msg, Notifier};
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Column, Direction, Line, Point, Side};
-use alacritty_terminal::selection::{Selection, SelectionRange, SelectionType};
+use alacritty_terminal::selection::{
+    Selection, SelectionRange, SelectionType as AlacrittySelectionType,
+};
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::search::{Match, RegexIter, RegexSearch};
 use alacritty_terminal::term::{
     self, cell::Cell, test::TermSize, viewport_to_point, Term, TermMode,
 };
 use alacritty_terminal::{tty, Grid};
+use egui::Modifiers;
 use settings::BackendSettings;
 use std::borrow::Cow;
 use std::cmp::min;
 use std::io::Result;
 use std::ops::{Index, RangeInclusive};
-use std::sync::{Arc, mpsc};
-use std::thread::JoinHandle;
-use alacritty_terminal::vte::ansi::Handler;
-use egui::Modifiers;
-use crate::types::Size;
+use std::sync::mpsc::Sender;
+use std::sync::{mpsc, Arc};
 
-type AlacrityEventLoop = (EventLoop<tty::Pty, EventProxy>, State);
+pub type PtyEvent = Event;
+pub type SelectionType = AlacrittySelectionType;
 
 #[derive(Debug, Clone)]
 pub enum BackendCommand {
     Write(Vec<u8>),
     Scroll(i32),
     Resize(Size, Size),
-    SelectStart(SelectionType, (f32, f32)),
-    SelectUpdate((f32, f32)),
+    SelectStart(SelectionType, f32, f32),
+    SelectUpdate(f32, f32),
     ProcessLink(LinkAction, Point),
-    MouseReport(MouseMode, MouseButton, Modifiers, Point, bool),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Action {
-    Shutdown,
-    ChangeTitle(String),
-    Ignore,
+    MouseReport(MouseButton, Modifiers, Point, bool),
 }
 
 #[derive(Debug, Clone)]
 pub enum MouseMode {
     Sgr,
-    // TODO: need to implementation
-    Normal,
+    Normal(bool),
+}
+
+impl From<TermMode> for MouseMode {
+    fn from(term_mode: TermMode) -> Self {
+        if term_mode.contains(TermMode::SGR_MOUSE) {
+            MouseMode::Sgr
+        } else if term_mode.contains(TermMode::UTF8_MOUSE) {
+            MouseMode::Normal(true)
+        } else {
+            MouseMode::Normal(false)
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -133,14 +139,13 @@ pub struct TerminalBackend {
     size: TerminalSize,
     notifier: Notifier,
     last_content: RenderableContent,
-    _pty_event_loop: JoinHandle<AlacrityEventLoop>,
-    _pty_event_subscription: JoinHandle<()>,
 }
 
 impl TerminalBackend {
     pub fn new(
         id: u64,
         app_context: egui::Context,
+        pty_event_proxy_sender: Sender<(u64, PtyEvent)>,
         settings: BackendSettings,
     ) -> Result<Self> {
         let pty_config = tty::Options {
@@ -148,11 +153,7 @@ impl TerminalBackend {
             ..tty::Options::default()
         };
         let config = term::Config::default();
-        let terminal_size = TerminalSize {
-            cell_width: settings.font_size.width as u16,
-            cell_height: settings.font_size.height as u16,
-            ..TerminalSize::default()
-        };
+        let terminal_size = TerminalSize::default();
         let pty = tty::new(&pty_config, terminal_size.into(), id)?;
         let (event_sender, event_receiver) = mpsc::channel();
         let event_proxy = EventProxy(event_sender);
@@ -170,18 +171,22 @@ impl TerminalBackend {
             EventLoop::new(term.clone(), event_proxy, pty, false, false)?;
         let notifier = Notifier(pty_event_loop.channel());
         let url_regex = RegexSearch::new(r#"(ipfs:|ipns:|magnet:|mailto:|gemini://|gopher://|https://|http://|news:|file://|git://|ssh:|ftp://)[^\u{0000}-\u{001F}\u{007F}-\u{009F}<>"\s{-}\^⟨⟩`]+"#).unwrap();
-        let pty_event_subscription = std::thread::Builder::new()
+        let _pty_event_loop_thread = pty_event_loop.spawn();
+        let _pty_event_subscription = std::thread::Builder::new()
             .name(format!("pty_event_subscription_{}", id))
-            .spawn(move || {
-                loop {
-                    if let Ok(event) = event_receiver.recv() {
-                        app_context.clone().request_repaint();
-                        if let Event::Exit = event {
-                            break;
-                        }
+            .spawn(move || loop {
+                if let Ok(event) = event_receiver.recv() {
+                    pty_event_proxy_sender
+                        .send((id, event.clone()))
+                        .unwrap_or_else(|_| {
+                            panic!("pty_event_subscription_{}: sending PtyEvent is failed", id)
+                        });
+                    app_context.clone().request_repaint();
+                    if let Event::Exit = event {
+                        break;
                     }
                 }
-            }).unwrap();
+            })?;
 
         Ok(Self {
             id,
@@ -190,13 +195,10 @@ impl TerminalBackend {
             size: terminal_size,
             notifier,
             last_content: initial_content,
-            _pty_event_loop: pty_event_loop.spawn(),
-            _pty_event_subscription: pty_event_subscription,
         })
     }
 
-    pub fn process_command(&mut self, cmd: BackendCommand) -> Action {
-        let mut action = Action::Ignore;
+    pub fn process_command(&mut self, cmd: BackendCommand) {
         let term = self.term.clone();
         let mut term = term.lock();
         match cmd {
@@ -210,43 +212,68 @@ impl TerminalBackend {
             BackendCommand::Resize(layout_size, font_size) => {
                 self.resize(&mut term, layout_size, font_size);
             },
-            BackendCommand::SelectStart(selection_type, (x, y)) => {
+            BackendCommand::SelectStart(selection_type, x, y) => {
                 self.start_selection(&mut term, selection_type, x, y);
             },
-            BackendCommand::SelectUpdate((x, y)) => {
+            BackendCommand::SelectUpdate(x, y) => {
                 self.update_selection(&mut term, x, y);
             },
             BackendCommand::ProcessLink(link_action, point) => {
                 self.process_link_action(&term, link_action, point);
             },
-            BackendCommand::MouseReport(mode, button, modifiers, point, pressed) => {
-                let mut mods = 0;
-                if modifiers.contains(Modifiers::SHIFT) {
-                    mods += 4;
-                }
-                if modifiers.contains(Modifiers::ALT) {
-                    mods += 8;
-                }
-                if modifiers.contains(Modifiers::COMMAND) {
-                    mods += 16;
-                }
-
-                match mode {
-                    MouseMode::Sgr => {
-                        self.sgr_mouse_report(point, button as u8 + mods, pressed)
-                    },
-                    MouseMode::Normal => {
-                        if pressed {
-                            self.normal_mouse_report(point, button as u8 + mods)
-                        } else {
-                            self.normal_mouse_report(point, 3 + mods)
-                        }
-                    },
-                }
+            BackendCommand::MouseReport(button, modifiers, point, pressed) => {
+                self.process_mouse_report(button, modifiers, point, pressed);
             },
         };
+    }
 
-        action
+    pub fn selection_point(
+        x: f32,
+        y: f32,
+        terminal_size: &TerminalSize,
+        display_offset: usize,
+    ) -> Point {
+        let col = (x as usize) / (terminal_size.cell_width as usize);
+        let col = min(Column(col), Column(terminal_size.num_cols as usize - 1));
+
+        let line = (y as usize) / (terminal_size.cell_height as usize);
+        let line = min(line, terminal_size.num_lines as usize - 1);
+
+        viewport_to_point(display_offset, Point::new(line, col))
+    }
+
+    pub fn selectable_content(&self) -> String {
+        let content = self.last_content();
+        let mut result = String::new();
+        if let Some(range) = content.selectable_range {
+            for indexed in content.grid.display_iter() {
+                if range.contains(indexed.point) {
+                    result.push(indexed.c);
+                }
+            }
+        }
+        result
+    }
+
+    pub fn sync(&mut self) -> &RenderableContent {
+        let term = self.term.clone();
+        let mut terminal = term.lock();
+        let selectable_range = match &terminal.selection {
+            Some(s) => s.to_range(&terminal),
+            None => None,
+        };
+
+        let cursor = terminal.grid_mut().cursor_cell().clone();
+        self.last_content.grid = terminal.grid().clone();
+        self.last_content.selectable_range = selectable_range;
+        self.last_content.cursor = cursor.clone();
+        self.last_content.terminal_mode = *terminal.mode();
+        self.last_content.terminal_size = self.size;
+        self.last_content()
+    }
+
+    pub fn last_content(&self) -> &RenderableContent {
+        &self.last_content
     }
 
     fn process_link_action(
@@ -291,12 +318,43 @@ impl TerminalBackend {
         }
     }
 
-    fn sgr_mouse_report(
+    fn process_mouse_report(
         &self,
+        button: MouseButton,
+        modifiers: Modifiers,
         point: Point,
-        button: u8,
         pressed: bool,
     ) {
+        let mut mods = 0;
+        if modifiers.contains(Modifiers::SHIFT) {
+            mods += 4;
+        }
+        if modifiers.contains(Modifiers::ALT) {
+            mods += 8;
+        }
+        if modifiers.contains(Modifiers::COMMAND) {
+            mods += 16;
+        }
+
+        match MouseMode::from(self.last_content().terminal_mode) {
+            MouseMode::Sgr => {
+                self.sgr_mouse_report(point, button as u8 + mods, pressed)
+            },
+            MouseMode::Normal(is_utf8) => {
+                if pressed {
+                    self.normal_mouse_report(
+                        point,
+                        button as u8 + mods,
+                        is_utf8,
+                    )
+                } else {
+                    self.normal_mouse_report(point, 3 + mods, is_utf8)
+                }
+            },
+        }
+    }
+
+    fn sgr_mouse_report(&self, point: Point, button: u8, pressed: bool) {
         let c = if pressed { 'M' } else { 'm' };
 
         let msg = format!(
@@ -310,11 +368,9 @@ impl TerminalBackend {
         self.notifier.notify(msg.as_bytes().to_vec());
     }
 
-    fn normal_mouse_report(&self, point: Point, button: u8) {
+    fn normal_mouse_report(&self, point: Point, button: u8, is_utf8: bool) {
         let Point { line, column } = point;
-        let utf8 = self.last_content.terminal_mode.contains(TermMode::UTF8_MOUSE);
-
-        let max_point = if utf8 { 2015 } else { 223 };
+        let max_point = if is_utf8 { 2015 } else { 223 };
 
         if line >= max_point || column >= max_point {
             return;
@@ -329,13 +385,13 @@ impl TerminalBackend {
             vec![first as u8, second as u8]
         };
 
-        if utf8 && column >= Column(95) {
+        if is_utf8 && column >= Column(95) {
             msg.append(&mut mouse_pos_encode(column.0));
         } else {
             msg.push(32 + 1 + column.0 as u8);
         }
 
-        if utf8 && line >= 95 {
+        if is_utf8 && line >= 95 {
             msg.append(&mut mouse_pos_encode(line.0 as usize));
         } else {
             msg.push(32 + 1 + line.0 as u8);
@@ -378,21 +434,6 @@ impl TerminalBackend {
         }
     }
 
-    pub fn selection_point(
-        x: f32,
-        y: f32,
-        terminal_size: &TerminalSize,
-        display_offset: usize,
-    ) -> Point {
-        let col = (x as usize) / (terminal_size.cell_width as usize);
-        let col = min(Column(col), Column(terminal_size.num_cols as usize - 1));
-
-        let line = (y as usize) / (terminal_size.cell_height as usize);
-        let line = min(line, terminal_size.num_lines as usize - 1);
-
-        viewport_to_point(display_offset, Point::new(line, col))
-    }
-
     fn selection_side(&self, x: f32) -> Side {
         let cell_x = x as usize % self.size.cell_width as usize;
         let half_cell_width = (self.size.cell_width as f32 / 2.0) as usize;
@@ -404,23 +445,21 @@ impl TerminalBackend {
         }
     }
 
-    pub fn resize(
+    fn resize(
         &mut self,
         terminal: &mut Term<EventProxy>,
         layout_size: Size,
         font_size: Size,
     ) {
-        if layout_size == self.size.layout_size &&
-            font_size.width as u16 == self.size.cell_width && 
-            font_size.height as u16 == self.size.cell_height
+        if layout_size == self.size.layout_size
+            && font_size.width as u16 == self.size.cell_width
+            && font_size.height as u16 == self.size.cell_height
         {
             return;
         }
 
-        let lines = (layout_size.height / font_size.height)
-             as u16;
-        let cols = (layout_size.width / font_size.width)
-             as u16;
+        let lines = (layout_size.height / font_size.height) as u16;
+        let cols = (layout_size.width / font_size.width) as u16;
         if lines > 0 && cols > 0 {
             self.size = TerminalSize {
                 layout_size,
@@ -463,44 +502,6 @@ impl TerminalBackend {
                 terminal.grid_mut().scroll_display(scroll);
             }
         }
-    }
-
-    pub fn selectable_content(&self) -> String {
-        let content = self.last_content();
-        let mut result = String::new();
-        if let Some(range) = content.selectable_range {
-            for indexed in content.grid.display_iter() {
-                if range.contains(indexed.point) {
-                    result.push(indexed.c);
-                }
-            }
-        }
-        result
-    }
-
-    pub fn sync(&mut self) -> &RenderableContent {
-        let term = self.term.clone();
-        let mut term = term.lock();
-        self.internal_sync(&mut term);
-        self.last_content()
-    }
-
-    fn internal_sync(&mut self, terminal: &mut Term<EventProxy>) {
-        let selectable_range = match &terminal.selection {
-            Some(s) => s.to_range(terminal),
-            None => None,
-        };
-
-        let cursor = terminal.grid_mut().cursor_cell().clone();
-        self.last_content.grid = terminal.grid().clone();
-        self.last_content.selectable_range = selectable_range;
-        self.last_content.cursor = cursor.clone();
-        self.last_content.terminal_mode = *terminal.mode();
-        self.last_content.terminal_size = self.size;
-    }
-
-    pub fn last_content(&self) -> &RenderableContent {
-        &self.last_content
     }
 
     /// Based on alacritty/src/display/hint.rs > regex_match_at

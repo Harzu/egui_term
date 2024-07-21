@@ -13,7 +13,6 @@ pub enum BindingAction {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InputKind {
-    Char(String),
     KeyCode(Key),
     Mouse(PointerButton),
 }
@@ -347,8 +346,8 @@ fn mouse_default_bindings() -> Vec<(Binding<InputKind>, BindingAction)> {
 
 #[cfg(test)]
 mod tests {
-    use crate::bindings::MouseBinding;
     use super::{BindingAction, BindingsLayout, InputKind, KeyboardBinding};
+    use crate::bindings::MouseBinding;
     use alacritty_terminal::term::TermMode;
     use egui::{Key, Modifiers, PointerButton};
 

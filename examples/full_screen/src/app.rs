@@ -1,51 +1,52 @@
+use std::sync::mpsc::Receiver;
 use egui::Vec2;
-use egui_term::{TerminalBackend, TerminalView};
+use egui_term::{PtyEvent, TerminalBackend, TerminalView};
 
 pub struct App {
-    terminal_backend_1: TerminalBackend,
-    terminal_backend_2: TerminalBackend,
+    terminal_backend: TerminalBackend,
+    pty_proxy_receiver: Receiver<(u64, egui_term::PtyEvent)>,
 }
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let terminal_backend_1 = TerminalBackend::new(
+        let system_shell = std::env::var("SHELL")
+            .expect("SHELL variable is not defined")
+            .to_string();
+        
+        let (pty_proxy_sender, pty_proxy_receiver) = std::sync::mpsc::channel();
+        let terminal_backend = TerminalBackend::new(
             0,
             cc.egui_ctx.clone(),
-            egui_term::BackendSettings::default(),
-        ).unwrap();
+            pty_proxy_sender.clone(),
+            egui_term::BackendSettings {
+                shell: system_shell,
+                ..egui_term::BackendSettings::default()
+            },
+        )
+        .unwrap();
 
-        let terminal_backend_2 = TerminalBackend::new(
-            1,
-            cc.egui_ctx.clone(),
-            egui_term::BackendSettings::default(),
-        ).unwrap();
-
-        Self {
-            terminal_backend_1,
-            terminal_backend_2
-        }
+        Self { terminal_backend, pty_proxy_receiver }
     }
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if let Ok((_, event)) = self.pty_proxy_receiver.try_recv() {
+            if let PtyEvent::Exit = event {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                return;
+            }
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
-            let terminal_1 = TerminalView::new(
-                ui,
-                &mut self.terminal_backend_1,
-            )
+            let terminal = TerminalView::new(ui, &mut self.terminal_backend)
                 .set_focus(true)
-                .set_size(Vec2::new(ui.available_width(), ui.available_height()));
+                .set_size(Vec2::new(
+                    ui.available_width(),
+                    ui.available_height(),
+                ));
 
-            // let terminal_2 = TerminalView::new(
-            //     ui,
-            //     &mut self.terminal_backend_2,
-            // )
-            //     .set_focus(false)
-            //     .set_size(Vec2::new(ui.available_width(), ui.available_height() / 2.0));
-
-            ui.add(terminal_1);
-            // ui.add(terminal_2);
+            ui.add(terminal);
         });
     }
 }
