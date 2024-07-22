@@ -10,6 +10,7 @@ use egui::{Id, PointerButton};
 
 use crate::backend::BackendCommand;
 use crate::backend::TerminalBackend;
+use crate::backend::TerminalSize;
 use crate::backend::{LinkAction, MouseButton, SelectionType};
 use crate::bindings::Binding;
 use crate::bindings::{BindingAction, BindingsLayout, InputKind};
@@ -220,14 +221,23 @@ impl<'a> TerminalView<'a> {
     ) {
         let content = self.backend.sync();
         let layout_offset = layout.rect.min;
-        let font_size = self.font.font_measure(&layout.ctx);
+        let TerminalSize {
+            cell_height,
+            cell_width,
+            ..
+        } = content.terminal_size;
         for indexed in content.grid.display_iter() {
             let x = layout_offset.x
-                + (indexed.point.column.0 as f32 * font_size.width);
+                + indexed.point.column.0.saturating_mul(cell_width as usize)
+                    as f32;
             let y = layout_offset.y
-                + ((indexed.point.line.0 as f32
-                    + content.grid.display_offset() as f32)
-                    * font_size.height);
+                + indexed
+                    .point
+                    .line
+                    .0
+                    .saturating_add(content.grid.display_offset() as i32)
+                    .saturating_mul(cell_height as i32)
+                    as f32;
 
             let mut fg = self.theme.get_color(indexed.fg);
             let mut bg = self.theme.get_color(indexed.bg);
@@ -251,7 +261,7 @@ impl<'a> TerminalView<'a> {
             painter.rect(
                 Rect::from_min_size(
                     Pos2::new(x, y),
-                    Vec2::new(font_size.width + 1.0, font_size.height + 1.0),
+                    Vec2::new(cell_width as f32, cell_height as f32),
                 ),
                 Rounding::ZERO,
                 bg,
@@ -263,13 +273,13 @@ impl<'a> TerminalView<'a> {
                 range.contains(&indexed.point)
                     && range.contains(&state.current_mouse_position_on_grid)
             }) {
-                let underline_height = y + font_size.height;
+                let underline_height = y + cell_height as f32;
                 painter.line_segment(
                     [
                         Pos2::new(x, underline_height),
-                        Pos2::new(x + font_size.width, underline_height),
+                        Pos2::new(x + cell_width as f32, underline_height),
                     ],
-                    Stroke::new(font_size.height * 0.15, fg),
+                    Stroke::new(cell_height as f32 * 0.15, fg),
                 );
             }
 
@@ -279,7 +289,7 @@ impl<'a> TerminalView<'a> {
                 painter.rect(
                     Rect::from_min_size(
                         Pos2::new(x, y),
-                        Vec2::new(font_size.width, font_size.height),
+                        Vec2::new(cell_width as f32, cell_height as f32),
                     ),
                     Rounding::default(),
                     cursor_color,
@@ -297,8 +307,8 @@ impl<'a> TerminalView<'a> {
 
                 painter.text(
                     Pos2 {
-                        x: x + (font_size.width / 2.0),
-                        y: y + (font_size.height / 2.0),
+                        x: x + (cell_width / 2) as f32,
+                        y: y + (cell_height / 2) as f32,
                     },
                     Align2::CENTER_CENTER,
                     indexed.c,

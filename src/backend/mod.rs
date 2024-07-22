@@ -459,8 +459,8 @@ impl TerminalBackend {
             return;
         }
 
-        let lines = (layout_size.height / font_size.height) as u16;
-        let cols = (layout_size.width / font_size.width) as u16;
+        let lines = (layout_size.height / font_size.height.floor()) as u16;
+        let cols = (layout_size.width / font_size.width.floor()) as u16;
         if lines > 0 && cols > 0 {
             self.size = TerminalSize {
                 layout_size,
