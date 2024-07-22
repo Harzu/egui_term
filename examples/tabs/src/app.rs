@@ -1,10 +1,13 @@
-use std::{collections::BTreeMap, sync::mpsc::{self, Receiver, Sender}};
 use egui_term::{PtyEvent, TerminalBackend, TerminalView};
+use std::{
+    collections::BTreeMap,
+    sync::mpsc::{self, Receiver, Sender},
+};
 
 pub struct App {
     command_sender: Sender<(u64, egui_term::PtyEvent)>,
     command_receiver: Receiver<(u64, egui_term::PtyEvent)>,
-    tab_manager: TabManager
+    tab_manager: TabManager,
 }
 
 impl App {
@@ -31,8 +34,8 @@ impl eframe::App for App {
                 },
                 egui_term::PtyEvent::Title(title) => {
                     self.tab_manager.set_title(tab_id, title);
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
 
@@ -40,20 +43,20 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 let tab_ids = self.tab_manager.get_tab_ids();
                 for id in tab_ids {
-                    let tab_title = if let Some(title) = self.tab_manager.get_title(id) {
-                        title
-                    } else {
-                        String::from("unknown")
-                    };
-                    if ui.button(format!("{}", tab_title))
-                        .clicked()
-                    {
-                        self.tab_manager.set_active(id.clone());
+                    let tab_title =
+                        if let Some(title) = self.tab_manager.get_title(id) {
+                            title
+                        } else {
+                            String::from("unknown")
+                        };
+                    if ui.button(tab_title).clicked() {
+                        self.tab_manager.set_active(id);
                     }
                 }
 
                 if ui.button("[+]").clicked() {
-                    self.tab_manager.add(self.command_sender.clone(), ctx.clone());
+                    self.tab_manager
+                        .add(self.command_sender.clone(), ctx.clone());
                 }
             });
         });
@@ -79,11 +82,15 @@ impl TabManager {
     fn new() -> Self {
         Self {
             active_tab_id: None,
-            tabs: BTreeMap::new()
+            tabs: BTreeMap::new(),
         }
     }
 
-    fn add(&mut self, command_sender: Sender<(u64, PtyEvent)>, ctx: egui::Context) {
+    fn add(
+        &mut self,
+        command_sender: Sender<(u64, PtyEvent)>,
+        ctx: egui::Context,
+    ) {
         let id = self.tabs.len() as u64;
         let tab = Tab::new(ctx, command_sender, id);
         self.tabs.insert(id, tab);
@@ -91,21 +98,17 @@ impl TabManager {
     }
 
     fn remove(&mut self, id: u64) {
-        if self.tabs.len() == 0 {
+        if self.tabs.is_empty() {
             return;
         }
 
         self.tabs.remove(&id).unwrap();
-        self.active_tab_id = if let Some(next_tab) = self.tabs
-            .iter()
-            .skip_while(|t| t.0 <= &id)
-            .next()
+        self.active_tab_id = if let Some(next_tab) =
+            self.tabs.iter().find(|t| t.0 <= &id)
         {
-            Some(next_tab.0.clone())
-        } else if let Some(last_tab) = self.tabs.last_key_value() {
-            Some(last_tab.0.clone())
+            Some(*next_tab.0)
         } else {
-            None
+            self.tabs.last_key_value().map(|last_tab| *last_tab.0)
         };
     }
 
@@ -120,21 +123,13 @@ impl TabManager {
     }
 
     fn get_title(&mut self, id: u64) -> Option<String> {
-        if let Some(tab) = self.tabs.get(&id) {
-            Some(tab.title.clone())
-        } else {
-            None
-        }
+        self.tabs.get(&id).map(|tab| tab.title.clone())
     }
 
     fn get_active(&mut self) -> Option<&mut Tab> {
-        if self.active_tab_id.is_none() {
-            return None;
-        }
+        self.active_tab_id?;
 
-        if let Some(tab) = self.tabs.get_mut(
-            &self.active_tab_id.unwrap()
-        ) {
+        if let Some(tab) = self.tabs.get_mut(&self.active_tab_id.unwrap()) {
             return Some(tab);
         }
 
@@ -142,10 +137,7 @@ impl TabManager {
     }
 
     fn get_tab_ids(&self) -> Vec<u64> {
-        self.tabs
-            .keys()
-            .map(|x| *x)
-            .collect()
+        self.tabs.keys().copied().collect()
     }
 
     fn set_active(&mut self, id: u64) {
@@ -163,20 +155,24 @@ struct Tab {
 }
 
 impl Tab {
-    fn new(ctx: egui::Context, command_sender: Sender<(u64, PtyEvent)>, id: u64) -> Self {
+    fn new(
+        ctx: egui::Context,
+        command_sender: Sender<(u64, PtyEvent)>,
+        id: u64,
+    ) -> Self {
         let system_shell = std::env::var("SHELL")
             .expect("SHELL variable is not defined")
             .to_string();
-        
+
         let backend = TerminalBackend::new(
-            id as u64,
+            id,
             ctx,
             command_sender,
             egui_term::BackendSettings {
                 shell: system_shell,
-                ..egui_term::BackendSettings::default()
             },
-        ).unwrap();
+        )
+        .unwrap();
 
         Self {
             backend,

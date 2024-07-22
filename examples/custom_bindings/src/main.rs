@@ -14,7 +14,7 @@ fn main() -> eframe::Result {
     };
 
     eframe::run_native(
-        "tabs_example",
+        "custom_bindings_example",
         native_options,
         Box::new(|cc| Ok(Box::new(app::App::new(cc)))),
     )

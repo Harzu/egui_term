@@ -11,9 +11,10 @@ use egui::{Id, PointerButton};
 use crate::backend::BackendCommand;
 use crate::backend::TerminalBackend;
 use crate::backend::{LinkAction, MouseButton, SelectionType};
+use crate::bindings::Binding;
 use crate::bindings::{BindingAction, BindingsLayout, InputKind};
-use crate::font::TermFont;
-use crate::theme::TermTheme;
+use crate::font::TerminalFont;
+use crate::theme::TerminalTheme;
 use crate::types::Size;
 
 const EGUI_TERM_WIDGET_ID_PREFIX: &str = "egui_term::instance::";
@@ -37,8 +38,8 @@ pub struct TerminalView<'a> {
     has_focus: bool,
     size: Vec2,
     backend: &'a mut TerminalBackend,
-    font: TermFont,
-    theme: TermTheme,
+    font: TerminalFont,
+    theme: TerminalTheme,
     bindings_layout: BindingsLayout,
 }
 
@@ -76,20 +77,20 @@ impl<'a> TerminalView<'a> {
             has_focus: false,
             size: ui.available_size(),
             backend,
-            font: TermFont::default(),
-            theme: TermTheme::default(),
+            font: TerminalFont::default(),
+            theme: TerminalTheme::default(),
             bindings_layout: BindingsLayout::new(),
         }
     }
 
     #[inline]
-    pub fn set_theme(mut self, theme: TermTheme) -> Self {
+    pub fn set_theme(mut self, theme: TerminalTheme) -> Self {
         self.theme = theme;
         self
     }
 
     #[inline]
-    pub fn set_font(mut self, font: TermFont) -> Self {
+    pub fn set_font(mut self, font: TerminalFont) -> Self {
         self.font = font;
         self
     }
@@ -103,6 +104,15 @@ impl<'a> TerminalView<'a> {
     #[inline]
     pub fn set_size(mut self, size: Vec2) -> Self {
         self.size = size;
+        self
+    }
+
+    #[inline]
+    pub fn add_bindings(
+        mut self,
+        bindings: Vec<(Binding<InputKind>, BindingAction)>,
+    ) -> Self {
+        self.bindings_layout.add_bindings(bindings);
         self
     }
 
@@ -148,6 +158,7 @@ impl<'a> TerminalView<'a> {
                         event,
                         self.backend,
                         &self.bindings_layout,
+                        modifiers,
                     ))
                 },
                 egui::Event::MouseWheel { unit, delta, .. } => input_actions
@@ -303,13 +314,15 @@ fn process_keyboard_event(
     event: egui::Event,
     backend: &TerminalBackend,
     bindings_layout: &BindingsLayout,
+    modifiers: Modifiers,
 ) -> InputAction {
     match event {
-        egui::Event::Text(text) | egui::Event::Paste(text) => {
-            InputAction::BackendCall(BackendCommand::Write(
-                text.as_bytes().to_vec(),
-            ))
+        egui::Event::Text(text) => {
+            process_text_event(&text, modifiers, backend, bindings_layout)
         },
+        egui::Event::Paste(text) => InputAction::BackendCall(
+            BackendCommand::Write(text.as_bytes().to_vec()),
+        ),
         egui::Event::Copy => {
             let content = backend.selectable_content();
             InputAction::WriteToClipboard(content)
@@ -327,6 +340,30 @@ fn process_keyboard_event(
             pressed,
         ),
         _ => InputAction::Ignore,
+    }
+}
+
+fn process_text_event(
+    text: &str,
+    modifiers: Modifiers,
+    backend: &TerminalBackend,
+    bindings_layout: &BindingsLayout,
+) -> InputAction {
+    if let Some(key) = Key::from_name(text) {
+        if bindings_layout.get_action(
+            InputKind::KeyCode(key),
+            modifiers,
+            backend.last_content().terminal_mode,
+        ) == BindingAction::Ignore
+        {
+            InputAction::BackendCall(BackendCommand::Write(
+                text.as_bytes().to_vec(),
+            ))
+        } else {
+            InputAction::Ignore
+        }
+    } else {
+        InputAction::Ignore
     }
 }
 

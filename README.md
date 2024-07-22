@@ -38,6 +38,9 @@ You can also look at [examples](./examples) directory for more information about
 
 - [full_screen](./examples/full_screen/) - The basic example of terminal emulator.
 - [tabs](./examples/tabs/) - The example with tab widget that show how multiple instance feature work.
+- [custom_bindings](./examples/custom_bindings/) - The example that show how you can add custom keyboard or mouse bindings to your terminal emulator app.
+- [themes](./examples/themes/) - The example that show how you can change terminal color scheme.
+- [fonts](./examples/fonts/) - The examples that show how you can change font type or font size in your terminal emulator app.
 
 ## Dependencies
 

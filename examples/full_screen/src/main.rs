@@ -16,8 +16,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "full_screen_example",
         native_options,
-        Box::new(|cc| {
-            Ok(Box::new(app::App::new(cc)))
-        }),
+        Box::new(|cc| Ok(Box::new(app::App::new(cc)))),
     )
 }

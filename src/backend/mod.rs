@@ -25,6 +25,7 @@ use std::ops::{Index, RangeInclusive};
 use std::sync::mpsc::Sender;
 use std::sync::{mpsc, Arc};
 
+pub type TerminalMode = TermMode;
 pub type PtyEvent = Event;
 pub type SelectionType = AlacrittySelectionType;
 

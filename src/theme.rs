@@ -70,25 +70,25 @@ impl Default for ColorPalette {
 }
 
 #[derive(Debug, Clone)]
-pub struct TermTheme {
+pub struct TerminalTheme {
     palette: Box<ColorPalette>,
     ansi256_colors: HashMap<u8, Color32>,
 }
 
-impl Default for TermTheme {
+impl Default for TerminalTheme {
     fn default() -> Self {
         Self {
             palette: Box::<ColorPalette>::default(),
-            ansi256_colors: TermTheme::get_ansi256_colors(),
+            ansi256_colors: TerminalTheme::get_ansi256_colors(),
         }
     }
 }
 
-impl TermTheme {
+impl TerminalTheme {
     pub fn new(palette: Box<ColorPalette>) -> Self {
         Self {
             palette,
-            ansi256_colors: TermTheme::get_ansi256_colors(),
+            ansi256_colors: TerminalTheme::get_ansi256_colors(),
         }
     }
 

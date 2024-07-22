@@ -16,11 +16,11 @@ impl Default for FontSettings {
 }
 
 #[derive(Debug, Clone)]
-pub struct TermFont {
+pub struct TerminalFont {
     font_type: FontId,
 }
 
-impl Default for TermFont {
+impl Default for TerminalFont {
     fn default() -> Self {
         Self {
             font_type: FontSettings::default().font_type,
@@ -28,7 +28,7 @@ impl Default for TermFont {
     }
 }
 
-impl TermFont {
+impl TerminalFont {
     pub fn new(settings: FontSettings) -> Self {
         Self {
             font_type: settings.font_type,

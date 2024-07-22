@@ -1,4 +1,4 @@
-use alacritty_terminal::term::TermMode;
+use crate::TerminalMode;
 use egui::{Key, Modifiers, PointerButton};
 
 #[derive(Clone, Hash, Debug, PartialEq, Eq)]
@@ -21,8 +21,8 @@ pub enum InputKind {
 pub struct Binding<T> {
     pub target: T,
     pub modifiers: Modifiers,
-    pub terminal_mode_include: TermMode,
-    pub terminal_mode_exclude: TermMode,
+    pub terminal_mode_include: TerminalMode,
+    pub terminal_mode_exclude: TerminalMode,
 }
 
 pub type KeyboardBinding = Binding<InputKind>;
@@ -58,9 +58,9 @@ macro_rules! generate_bindings {
         $(
             let mut _input_modifiers = Modifiers::default();
             $(_input_modifiers = $input_modifiers;)*
-            let mut _terminal_mode_include = TermMode::empty();
+            let mut _terminal_mode_include = TerminalMode::empty();
             $(_terminal_mode_include.insert($terminal_mode_include);)*
-            let mut _terminal_mode_exclude = TermMode::empty();
+            let mut _terminal_mode_exclude = TerminalMode::empty();
             $(_terminal_mode_exclude.insert($terminal_mode_exclude);)*
 
             let binding = $binding_type {
@@ -118,7 +118,7 @@ impl BindingsLayout {
         &self,
         input: InputKind,
         modifiers: Modifiers,
-        terminal_mode: TermMode,
+        terminal_mode: TerminalMode,
     ) -> BindingAction {
         for (binding, action) in &self.layout {
             let is_triggered = binding.target == input
@@ -138,7 +138,7 @@ impl BindingsLayout {
 fn default_keyboard_bindings() -> Vec<(Binding<InputKind>, BindingAction)> {
     generate_bindings!(
         KeyboardBinding;
-        // ANY
+        // NONE MODIFIERS
         Enter;     BindingAction::Char('\x0d');
         Backspace; BindingAction::Char('\x7f');
         Escape;    BindingAction::Char('\x1b');
@@ -168,19 +168,19 @@ fn default_keyboard_bindings() -> Vec<(Binding<InputKind>, BindingAction)> {
         F19;       BindingAction::Esc("\x1b[33~".into());
         F20;       BindingAction::Esc("\x1b[34~".into());
         // APP_CURSOR Excluding
-        End,        ~TermMode::APP_CURSOR; BindingAction::Esc("\x1b[F".into());
-        Home,       ~TermMode::APP_CURSOR; BindingAction::Esc("\x1b[H".into());
-        ArrowUp,    ~TermMode::APP_CURSOR; BindingAction::Esc("\x1b[A".into());
-        ArrowDown,  ~TermMode::APP_CURSOR; BindingAction::Esc("\x1b[B".into());
-        ArrowLeft,  ~TermMode::APP_CURSOR; BindingAction::Esc("\x1b[D".into());
-        ArrowRight, ~TermMode::APP_CURSOR; BindingAction::Esc("\x1b[C".into());
+        End,        ~TerminalMode::APP_CURSOR; BindingAction::Esc("\x1b[F".into());
+        Home,       ~TerminalMode::APP_CURSOR; BindingAction::Esc("\x1b[H".into());
+        ArrowUp,    ~TerminalMode::APP_CURSOR; BindingAction::Esc("\x1b[A".into());
+        ArrowDown,  ~TerminalMode::APP_CURSOR; BindingAction::Esc("\x1b[B".into());
+        ArrowLeft,  ~TerminalMode::APP_CURSOR; BindingAction::Esc("\x1b[D".into());
+        ArrowRight, ~TerminalMode::APP_CURSOR; BindingAction::Esc("\x1b[C".into());
         // APP_CURSOR Including
-        End,        +TermMode::APP_CURSOR; BindingAction::Esc("\x1BOF".into());
-        Home,       +TermMode::APP_CURSOR; BindingAction::Esc("\x1BOH".into());
-        ArrowUp,    +TermMode::APP_CURSOR; BindingAction::Esc("\x1bOA".into());
-        ArrowDown,  +TermMode::APP_CURSOR; BindingAction::Esc("\x1bOB".into());
-        ArrowLeft,  +TermMode::APP_CURSOR; BindingAction::Esc("\x1bOD".into());
-        ArrowRight, +TermMode::APP_CURSOR; BindingAction::Esc("\x1bOC".into());
+        End,        +TerminalMode::APP_CURSOR; BindingAction::Esc("\x1BOF".into());
+        Home,       +TerminalMode::APP_CURSOR; BindingAction::Esc("\x1BOH".into());
+        ArrowUp,    +TerminalMode::APP_CURSOR; BindingAction::Esc("\x1bOA".into());
+        ArrowDown,  +TerminalMode::APP_CURSOR; BindingAction::Esc("\x1bOB".into());
+        ArrowLeft,  +TerminalMode::APP_CURSOR; BindingAction::Esc("\x1bOD".into());
+        ArrowRight, +TerminalMode::APP_CURSOR; BindingAction::Esc("\x1bOC".into());
         // CTRL
         ArrowUp,    Modifiers::COMMAND; BindingAction::Esc("\x1b[1;5A".into());
         ArrowDown,  Modifiers::COMMAND; BindingAction::Esc("\x1b[1;5B".into());
@@ -237,10 +237,10 @@ fn default_keyboard_bindings() -> Vec<(Binding<InputKind>, BindingAction)> {
         Enter,      Modifiers::SHIFT; BindingAction::Char('\x0d');
         Backspace,  Modifiers::SHIFT; BindingAction::Char('\x7f');
         Tab,        Modifiers::SHIFT; BindingAction::Esc("\x1b[Z".into());
-        End,        Modifiers::SHIFT, +TermMode::ALT_SCREEN; BindingAction::Esc("\x1b[1;2F".into());
-        Home,       Modifiers::SHIFT, +TermMode::ALT_SCREEN; BindingAction::Esc("\x1b[1;2H".into());
-        PageUp,     Modifiers::SHIFT, +TermMode::ALT_SCREEN; BindingAction::Esc("\x1b[5;2~".into());
-        PageDown,   Modifiers::SHIFT, +TermMode::ALT_SCREEN; BindingAction::Esc("\x1b[6;2~".into());
+        End,        Modifiers::SHIFT, +TerminalMode::ALT_SCREEN; BindingAction::Esc("\x1b[1;2F".into());
+        Home,       Modifiers::SHIFT, +TerminalMode::ALT_SCREEN; BindingAction::Esc("\x1b[1;2H".into());
+        PageUp,     Modifiers::SHIFT, +TerminalMode::ALT_SCREEN; BindingAction::Esc("\x1b[5;2~".into());
+        PageDown,   Modifiers::SHIFT, +TerminalMode::ALT_SCREEN; BindingAction::Esc("\x1b[6;2~".into());
         ArrowUp,    Modifiers::SHIFT; BindingAction::Esc("\x1b[1;2A".into());
         ArrowDown,  Modifiers::SHIFT; BindingAction::Esc("\x1b[1;2B".into());
         ArrowLeft,  Modifiers::SHIFT; BindingAction::Esc("\x1b[1;2D".into());
@@ -348,7 +348,7 @@ fn mouse_default_bindings() -> Vec<(Binding<InputKind>, BindingAction)> {
 mod tests {
     use super::{BindingAction, BindingsLayout, InputKind, KeyboardBinding};
     use crate::bindings::MouseBinding;
-    use alacritty_terminal::term::TermMode;
+    use crate::TerminalMode;
     use egui::{Key, Modifiers, PointerButton};
 
     #[test]
@@ -377,8 +377,8 @@ mod tests {
         let mut current_layout: BindingsLayout = BindingsLayout::default();
         let custom_bindings = generate_bindings!(
             KeyboardBinding;
-            ArrowDown, Modifiers::ALT, +TermMode::SGR_MOUSE; BindingAction::LinkOpen;
-            C,       Modifiers::SHIFT, +TermMode::ALT_SCREEN;             BindingAction::Paste;
+            ArrowDown, Modifiers::ALT, +TerminalMode::SGR_MOUSE; BindingAction::LinkOpen;
+            C,       Modifiers::SHIFT, +TerminalMode::ALT_SCREEN;             BindingAction::Paste;
             C,       Modifiers::SHIFT | Modifiers::ALT;                   BindingAction::Copy;
             W,       Modifiers::ALT;                                      BindingAction::Char('W');
             Q,       Modifiers::SHIFT | Modifiers::CTRL | Modifiers::ALT; BindingAction::Esc("\x1b[1;7C".into());
@@ -404,7 +404,7 @@ mod tests {
         let mut current_layout = BindingsLayout::default();
         let custom_bindings = generate_bindings!(
             KeyboardBinding;
-            C, Modifiers::SHIFT, +TermMode::ALT_SCREEN; BindingAction::Paste;
+            C, Modifiers::SHIFT, +TerminalMode::ALT_SCREEN; BindingAction::Paste;
             A, Modifiers::SHIFT | Modifiers::CTRL;      BindingAction::Char('A');
             B, Modifiers::SHIFT | Modifiers::CTRL;      BindingAction::Char('B');
             C, Modifiers::SHIFT | Modifiers::CTRL;      BindingAction::Copy;
@@ -439,7 +439,7 @@ mod tests {
         let mut current_layout = BindingsLayout::default();
         let custom_bindings = generate_bindings!(
             MouseBinding;
-            Primary,   Modifiers::SHIFT, +TermMode::ALT_SCREEN; BindingAction::Paste;
+            Primary,   Modifiers::SHIFT, +TerminalMode::ALT_SCREEN; BindingAction::Paste;
             Secondary, Modifiers::SHIFT | Modifiers::CTRL;      BindingAction::Char('A');
         );
         let current_layout_length = current_layout.layout.len();
@@ -472,7 +472,7 @@ mod tests {
         let mut current_layout = BindingsLayout::default();
         let custom_bindings = generate_bindings!(
             KeyboardBinding;
-            C, Modifiers::SHIFT, +TermMode::ALT_SCREEN; BindingAction::Paste;
+            C, Modifiers::SHIFT, +TerminalMode::ALT_SCREEN; BindingAction::Paste;
             A, Modifiers::SHIFT | Modifiers::CTRL;      BindingAction::Char('A');
             B, Modifiers::SHIFT | Modifiers::CTRL;      BindingAction::Char('B');
             C, Modifiers::SHIFT | Modifiers::CTRL;      BindingAction::Copy;
