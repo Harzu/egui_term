@@ -22,11 +22,11 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn on_exit(&mut self) {
-        self.tab_manager.clear();
-    }
-
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if ctx.input(|i| i.viewport().close_requested()) {
+            self.tab_manager.clear();
+        }
+
         if let Ok((tab_id, event)) = self.command_receiver.try_recv() {
             match event {
                 egui_term::PtyEvent::Exit => {
@@ -103,13 +103,12 @@ impl TabManager {
         }
 
         self.tabs.remove(&id).unwrap();
-        self.active_tab_id = if let Some(next_tab) =
-            self.tabs.iter().find(|t| t.0 <= &id)
-        {
-            Some(*next_tab.0)
-        } else {
-            self.tabs.last_key_value().map(|last_tab| *last_tab.0)
-        };
+        self.active_tab_id =
+            if let Some(next_tab) = self.tabs.iter().find(|t| t.0 <= &id) {
+                Some(*next_tab.0)
+            } else {
+                self.tabs.last_key_value().map(|last_tab| *last_tab.0)
+            };
     }
 
     fn clear(&mut self) {
