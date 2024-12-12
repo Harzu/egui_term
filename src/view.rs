@@ -141,7 +141,7 @@ impl<'a> TerminalView<'a> {
         layout: &Response,
         state: &mut TerminalViewState,
     ) -> Self {
-        if !layout.has_focus() {
+        if !layout.has_focus() || !layout.hovered() {
             return self;
         }
 
