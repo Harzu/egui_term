@@ -1,0 +1,40 @@
+[package]
+name = "examples"
+version = "0.0.0"
+publish = false
+edition = "2021"
+license = "MIT"
+
+[dev-dependencies]
+egui_term = { version = "*", path = "../egui_term/" }
+egui = "0.30"
+eframe = "0.30"
+env_logger = "0.11"
+log = "0.4"
+alacritty_terminal = { git = "https://github.com/alacritty/alacritty", rev = "cacdb5bb3b72bad2c729227537979d95af75978f" }
+anyhow = "1"
+open = "5"
+
+[[example]]
+name = "custom_bindings"
+path = "custom_bindings.rs"
+
+[[example]]
+name = "dock"
+path = "dock.rs"
+
+[[example]]
+name = "fonts"
+path = "fonts.rs"
+
+[[example]]
+name = "full_screen"
+path = "full_screen.rs"
+
+[[example]]
+name = "tabs"
+path = "tabs.rs"
+
+[[example]]
+name = "themes"
+path = "themes.rs"
