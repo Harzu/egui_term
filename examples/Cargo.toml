@@ -15,6 +15,7 @@ alacritty_terminal = { git = "https://github.com/alacritty/alacritty", rev = "ca
 anyhow = "1"
 open = "5"
 egui_dock = { git = "https://github.com/Badless/egui_dock" }
+winit = "0.30"
 
 [[example]]
 name = "custom_bindings"
