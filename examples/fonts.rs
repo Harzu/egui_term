@@ -19,17 +19,13 @@ fn main() -> eframe::Result {
 }
 
 use egui::{FontId, Vec2};
-use egui_term::{
-    FontSettings, PtyEvent, TerminalBackend, TerminalFont, TerminalView,
-};
+use egui_term::{FontSettings, PtyEvent, TerminalBackend, TerminalFont, TerminalView};
 use std::sync::mpsc::Receiver;
 
-const TERM_FONT_JET_BRAINS_BYTES: &[u8] = include_bytes!(
-    "../assets/fonts/JetBrains/JetBrainsMonoNerdFontMono-Bold.ttf"
-);
+const TERM_FONT_JET_BRAINS_BYTES: &[u8] =
+    include_bytes!("../assets/fonts/JetBrains/JetBrainsMonoNerdFontMono-Bold.ttf");
 
-const TERM_FONT_3270_BYTES: &[u8] =
-    include_bytes!("../assets/fonts/3270/3270NerdFont-Regular.ttf");
+const TERM_FONT_3270_BYTES: &[u8] = include_bytes!("../assets/fonts/3270/3270NerdFont-Regular.ttf");
 
 fn setup_font(ctx: &egui::Context, name: &str) {
     let bytes = if name == "3270" {
@@ -41,7 +37,7 @@ fn setup_font(ctx: &egui::Context, name: &str) {
     let mut fonts = egui::FontDefinitions::default();
     fonts
         .font_data
-        .insert(name.to_owned(), egui::FontData::from_static(bytes));
+        .insert(name.to_owned(), egui::FontData::from_static(bytes).into());
 
     fonts
         .families
@@ -127,10 +123,7 @@ impl eframe::App for App {
                 .set_font(TerminalFont::new(FontSettings {
                     font_type: FontId::proportional(self.font_size),
                 }))
-                .set_size(Vec2::new(
-                    ui.available_width(),
-                    ui.available_height(),
-                ));
+                .set_size(Vec2::new(ui.available_width(), ui.available_height()));
 
             ui.add(terminal);
         });
