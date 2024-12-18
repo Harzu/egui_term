@@ -1,9 +1,27 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+
+fn main() -> eframe::Result {
+    env_logger::init();
+
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1000.0, 600.0])
+            .with_min_inner_size([1000.0, 600.0]),
+        ..Default::default()
+    };
+
+    eframe::run_native(
+        "tabs_example",
+        native_options,
+        Box::new(|cc| Ok(Box::new(App::new(&cc.egui_ctx)))),
+    )
+}
+
 use eframe::epaint::FontId;
 use egui::{Context, Ui};
 use egui_dock::{DockArea, DockState, NodeIndex, Style};
 use egui_term::{
-    BackendSettings, FontSettings, PtyEvent, TerminalBackend, TerminalFont,
-    TerminalView,
+    BackendSettings, FontSettings, PtyEvent, TerminalBackend, TerminalFont, TerminalView,
 };
 use log::error;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -37,13 +55,8 @@ pub struct Tab {
 impl Tab {
     pub fn term(ctx: Context, command_sender: Sender<(u64, PtyEvent)>) -> Self {
         let id = GLOBAL_COUNTER.next();
-        let backend = TerminalBackend::new(
-            id,
-            ctx,
-            command_sender,
-            BackendSettings::default(),
-        )
-        .unwrap();
+        let backend =
+            TerminalBackend::new(id, ctx, command_sender, BackendSettings::default()).unwrap();
 
         Self { id, backend }
     }
@@ -75,7 +88,7 @@ impl egui_dock::TabViewer for TabViewer<'_> {
             Err(err) => {
                 error!("close tab {} failed: {err}", tab.id);
                 false
-            },
+            }
             Ok(_) => true,
         }
     }
@@ -95,10 +108,7 @@ impl App {
             }
         });
 
-        let mut dock_state = DockState::new(vec![Tab::term(
-            ctx.clone(),
-            command_sender.clone(),
-        )]);
+        let mut dock_state = DockState::new(vec![Tab::term(ctx.clone(), command_sender.clone())]);
 
         dock_state.main_surface_mut().split_right(
             NodeIndex::root(),
