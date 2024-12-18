@@ -8,7 +8,12 @@ license = "MIT"
 [dev-dependencies]
 egui_term = { version = "*", path = "../egui_term/" }
 egui = "0.30"
-eframe = "0.30"
+eframe = { version = "0.30", default-features = false, features = [
+    "accesskit",     # Make egui compatible with screen readers. NOTE: adds a lot of dependencies.
+    "default_fonts", # Embed the default egui fonts.
+    "wgpu",          # Use the glow rendering backend. Alternative: "wgpu".
+    "persistence",   # Enable restoring app state when restarting the app.
+] }
 env_logger = "0.11"
 log = "0.4"
 alacritty_terminal = { git = "https://github.com/alacritty/alacritty", rev = "cacdb5bb3b72bad2c729227537979d95af75978f" }
