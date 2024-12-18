@@ -7,10 +7,10 @@
 Terminal emulator widget powered by EGUI framework and alacritty terminal backend.
 
 <a href="./examples/full_screen">
-  <img src="examples/full_screen/assets/screenshot.png" width="275px">
+  <img src="assets/fullscreen.png" width="275px">
 </a>
 <a href="./examples/tabs">
-  <img src="examples/tabs/assets/screenshot.png" width="273px">
+  <img src="assets/tabs.png" width="273px">
 </a>
 
 </div>
