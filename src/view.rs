@@ -1,6 +1,7 @@
 use alacritty_terminal::index::Point as TerminalGridPoint;
 use alacritty_terminal::term::cell;
 use alacritty_terminal::term::TermMode;
+use egui::Color32;
 use egui::Key;
 use egui::Modifiers;
 use egui::MouseWheelUnit;
@@ -10,13 +11,13 @@ use egui::{Id, PointerButton};
 
 use crate::backend::BackendCommand;
 use crate::backend::TerminalBackend;
-use crate::backend::TerminalSize;
 use crate::backend::{LinkAction, MouseButton, SelectionType};
 use crate::bindings::Binding;
 use crate::bindings::{BindingAction, BindingsLayout, InputKind};
 use crate::font::TerminalFont;
 use crate::theme::TerminalTheme;
 use crate::types::Size;
+use crate::utils;
 
 const EGUI_TERM_WIDGET_ID_PREFIX: &str = "egui_term::instance::";
 
@@ -44,7 +45,7 @@ pub struct TerminalView<'a> {
     bindings_layout: BindingsLayout,
 }
 
-impl<'a> Widget for TerminalView<'a> {
+impl Widget for TerminalView<'_> {
     fn ui(self, ui: &mut egui::Ui) -> Response {
         let (layout, painter) =
             ui.allocate_painter(self.size, egui::Sense::click());
@@ -221,11 +222,10 @@ impl<'a> TerminalView<'a> {
     ) {
         let content = self.backend.sync();
         let layout_offset = layout.rect.min;
-        let TerminalSize {
-            cell_height,
-            cell_width,
-            ..
-        } = content.terminal_size;
+        let cell_height = content.terminal_size.cell_height as f32;
+        let cell_width = content.terminal_size.cell_width as f32;
+        let mut renderable_content = RenderableContent::default();
+
         for indexed in content.grid.display_iter() {
             let x = layout_offset.x
                 + indexed.point.column.0.saturating_mul(cell_width as usize)
@@ -258,43 +258,41 @@ impl<'a> TerminalView<'a> {
                 std::mem::swap(&mut fg, &mut bg);
             }
 
-            painter.rect(
-                Rect::from_min_size(
-                    Pos2::new(x, y),
-                    Vec2::new(cell_width as f32, cell_height as f32),
-                ),
-                Rounding::ZERO,
-                bg,
-                Stroke::NONE,
-            );
+            renderable_content
+                .background
+                .push(RenderableBackgroundCell {
+                    rect: Rect::from_min_size(
+                        Pos2::new(x, y),
+                        Vec2::new(cell_width, cell_height),
+                    ),
+                    color: bg,
+                });
 
-            // Draw hovered hyperlink underline
+            // Handle hovered hyperlink underline
             if content.hovered_hyperlink.as_ref().map_or(false, |range| {
                 range.contains(&indexed.point)
                     && range.contains(&state.current_mouse_position_on_grid)
             }) {
-                let underline_height = y + cell_height as f32;
-                painter.line_segment(
-                    [
+                let underline_height = y + cell_height;
+                renderable_content.lines.push(RenderableLine {
+                    points: [
                         Pos2::new(x, underline_height),
-                        Pos2::new(x + cell_width as f32, underline_height),
+                        Pos2::new(x + cell_width, underline_height),
                     ],
-                    Stroke::new(cell_height as f32 * 0.15, fg),
-                );
+                    stroke: Stroke::new(cell_height * 0.15, fg),
+                });
             }
 
             // Handle cursor rendering
             if content.grid.cursor.point == indexed.point {
                 let cursor_color = self.theme.get_color(content.cursor.fg);
-                painter.rect(
-                    Rect::from_min_size(
+                renderable_content.cursor.push(RenderableCursorItem {
+                    rect: Rect::from_min_size(
                         Pos2::new(x, y),
-                        Vec2::new(cell_width as f32, cell_height as f32),
+                        Vec2::new(cell_width, cell_height),
                     ),
-                    Rounding::default(),
-                    cursor_color,
-                    Stroke::NONE,
-                );
+                    color: cursor_color,
+                });
             }
 
             // Draw text content
@@ -305,19 +303,75 @@ impl<'a> TerminalView<'a> {
                     fg = bg;
                 }
 
-                painter.text(
-                    Pos2 {
-                        x: x + (cell_width / 2) as f32,
-                        y: y + (cell_height / 2) as f32,
-                    },
-                    Align2::CENTER_CENTER,
-                    indexed.c,
-                    self.font.font_type(),
+                let x = if utils::is_cjk(indexed.c) {
+                    x + cell_width
+                } else {
+                    x + (cell_width / 2.0)
+                };
+
+                renderable_content.text.push(RenderableTextItem {
+                    content: indexed.c,
+                    position: Pos2 { x, y },
                     fg,
-                );
+                });
             }
         }
+
+        renderable_content.background.iter().for_each(|bg_cell| {
+            painter.rect_filled(bg_cell.rect, Rounding::ZERO, bg_cell.color);
+        });
+
+        renderable_content.cursor.iter().for_each(|cursor_item| {
+            painter.rect_filled(
+                cursor_item.rect,
+                Rounding::default(),
+                cursor_item.color,
+            );
+        });
+
+        renderable_content.lines.iter().for_each(|line_item| {
+            painter.line_segment(line_item.points, line_item.stroke);
+        });
+
+        renderable_content.text.iter().for_each(|text_item| {
+            painter.text(
+                text_item.position,
+                Align2::CENTER_TOP,
+                text_item.content,
+                self.font.font_type(),
+                text_item.fg,
+            );
+        });
     }
+}
+
+#[derive(Default)]
+struct RenderableContent {
+    background: Vec<RenderableBackgroundCell>,
+    text: Vec<RenderableTextItem>,
+    cursor: Vec<RenderableCursorItem>,
+    lines: Vec<RenderableLine>,
+}
+
+struct RenderableBackgroundCell {
+    rect: Rect,
+    color: Color32,
+}
+
+struct RenderableTextItem {
+    content: char,
+    position: Pos2,
+    fg: Color32,
+}
+
+struct RenderableCursorItem {
+    rect: Rect,
+    color: Color32,
+}
+
+struct RenderableLine {
+    points: [Pos2; 2],
+    stroke: Stroke,
 }
 
 fn process_keyboard_event(
@@ -373,7 +427,9 @@ fn process_text_event(
             InputAction::Ignore
         }
     } else {
-        InputAction::Ignore
+        InputAction::BackendCall(BackendCommand::Write(
+            text.as_bytes().to_vec(),
+        ))
     }
 }
 

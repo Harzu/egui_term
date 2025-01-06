@@ -2,7 +2,11 @@ use egui::{FontId, Vec2};
 use egui_term::{
     FontSettings, PtyEvent, TerminalBackend, TerminalFont, TerminalView,
 };
-use std::sync::mpsc::Receiver;
+use std::sync::{mpsc::Receiver, Arc};
+
+const TERM_FONT_JET_BRAINS_NAME: &str = "jet brains";
+const TERM_FONT_3270_NAME: &str = "3270";
+const TERM_FONT_CJK_NAME: &str = "cjk";
 
 const TERM_FONT_JET_BRAINS_BYTES: &[u8] = include_bytes!(
     "../assets/fonts/JetBrains/JetBrainsMonoNerdFontMono-Bold.ttf"
@@ -11,17 +15,21 @@ const TERM_FONT_JET_BRAINS_BYTES: &[u8] = include_bytes!(
 const TERM_FONT_3270_BYTES: &[u8] =
     include_bytes!("../assets/fonts/3270/3270NerdFont-Regular.ttf");
 
+const TERM_FONT_CJK_BYTES: &[u8] =
+    include_bytes!("../assets/fonts/cjk/LXGWWenKaiMonoTC-Regular.ttf");
+
 fn setup_font(ctx: &egui::Context, name: &str) {
-    let bytes = if name == "3270" {
-        TERM_FONT_3270_BYTES
-    } else {
-        TERM_FONT_JET_BRAINS_BYTES
+    let bytes = match name {
+        TERM_FONT_3270_NAME => &TERM_FONT_3270_BYTES,
+        TERM_FONT_CJK_NAME => &TERM_FONT_CJK_BYTES,
+        _ => &TERM_FONT_JET_BRAINS_BYTES,
     };
 
     let mut fonts = egui::FontDefinitions::default();
-    fonts
-        .font_data
-        .insert(name.to_owned(), egui::FontData::from_static(bytes));
+    fonts.font_data.insert(
+        name.to_owned(),
+        Arc::new(egui::FontData::from_static(bytes)),
+    );
 
     fonts
         .families
@@ -46,7 +54,7 @@ pub struct App {
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        setup_font(&cc.egui_ctx, "jet_brains_mono");
+        setup_font(&cc.egui_ctx, TERM_FONT_JET_BRAINS_NAME);
         let system_shell = std::env::var("SHELL")
             .expect("SHELL variable is not defined")
             .to_string();
@@ -73,20 +81,22 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if let Ok((_, PtyEvent::Exit)) = self.pty_proxy_receiver.try_recv() {
-            // if let PtyEvent::Exit = event {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
-            // }
         }
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if ui.button("jet brains").clicked() {
-                    setup_font(ctx, "jet_brains_mono");
+                if ui.button(TERM_FONT_JET_BRAINS_NAME).clicked() {
+                    setup_font(ctx, TERM_FONT_JET_BRAINS_NAME);
                 }
 
-                if ui.button("3270").clicked() {
-                    setup_font(ctx, "3270");
+                if ui.button(TERM_FONT_3270_NAME).clicked() {
+                    setup_font(ctx, TERM_FONT_3270_NAME);
+                }
+
+                if ui.button(TERM_FONT_CJK_NAME).clicked() {
+                    setup_font(ctx, TERM_FONT_CJK_NAME);
                 }
             });
 
