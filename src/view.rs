@@ -1,3 +1,4 @@
+use alacritty_terminal::grid::GridCell;
 use alacritty_terminal::index::Point as TerminalGridPoint;
 use alacritty_terminal::term::cell;
 use alacritty_terminal::term::TermMode;
@@ -17,7 +18,6 @@ use crate::bindings::{BindingAction, BindingsLayout, InputKind};
 use crate::font::TerminalFont;
 use crate::theme::TerminalTheme;
 use crate::types::Size;
-use crate::utils;
 
 const EGUI_TERM_WIDGET_ID_PREFIX: &str = "egui_term::instance::";
 
@@ -227,8 +227,21 @@ impl<'a> TerminalView<'a> {
         let mut renderable_content = RenderableContent::default();
 
         for indexed in content.grid.display_iter() {
+            let is_inverse = indexed.cell.flags.contains(cell::Flags::INVERSE);
+            let is_dim = indexed
+                .cell
+                .flags
+                .intersects(cell::Flags::DIM | cell::Flags::DIM_BOLD);
+            let is_selected = content
+                .selectable_range
+                .map_or(false, |r| r.contains(indexed.point));
+
             let x = layout_offset.x
-                + indexed.point.column.0.saturating_mul(cell_width as usize)
+                + indexed
+                    .point
+                    .column
+                    .0
+                    .saturating_mul(cell_width as usize)
                     as f32;
             let y = layout_offset.y
                 + indexed
@@ -242,19 +255,11 @@ impl<'a> TerminalView<'a> {
             let mut fg = self.theme.get_color(indexed.fg);
             let mut bg = self.theme.get_color(indexed.bg);
 
-            if indexed
-                .cell
-                .flags
-                .intersects(cell::Flags::DIM | cell::Flags::DIM_BOLD)
-            {
+            if is_dim {
                 fg = fg.linear_multiply(0.7);
             }
 
-            if indexed.cell.flags.contains(cell::Flags::INVERSE)
-                || content
-                    .selectable_range
-                    .map_or(false, |r| r.contains(indexed.point))
-            {
+            if is_inverse || is_selected {
                 std::mem::swap(&mut fg, &mut bg);
             }
 
@@ -303,7 +308,7 @@ impl<'a> TerminalView<'a> {
                     fg = bg;
                 }
 
-                let x = if utils::is_cjk(indexed.c) {
+                let x = if indexed.flags().contains(cell::Flags::WIDE_CHAR) {
                     x + cell_width
                 } else {
                     x + (cell_width / 2.0)
@@ -317,31 +322,39 @@ impl<'a> TerminalView<'a> {
             }
         }
 
-        renderable_content.background.iter().for_each(|bg_cell| {
-            painter.rect_filled(bg_cell.rect, Rounding::ZERO, bg_cell.color);
-        });
+        renderable_content.background
+            .iter()
+            .for_each(|bg_cell| {
+                painter.rect_filled(bg_cell.rect, Rounding::ZERO, bg_cell.color);
+            });
 
-        renderable_content.cursor.iter().for_each(|cursor_item| {
-            painter.rect_filled(
-                cursor_item.rect,
-                Rounding::default(),
-                cursor_item.color,
-            );
-        });
+        renderable_content.cursor
+            .iter()
+            .for_each(|cursor_item| {
+                painter.rect_filled(
+                    cursor_item.rect,
+                    Rounding::default(),
+                    cursor_item.color,
+                );
+            });
 
-        renderable_content.lines.iter().for_each(|line_item| {
-            painter.line_segment(line_item.points, line_item.stroke);
-        });
+        renderable_content.lines
+            .iter()
+            .for_each(|line_item| {
+                painter.line_segment(line_item.points, line_item.stroke);
+            });
 
-        renderable_content.text.iter().for_each(|text_item| {
-            painter.text(
-                text_item.position,
-                Align2::CENTER_TOP,
-                text_item.content,
-                self.font.font_type(),
-                text_item.fg,
-            );
-        });
+        renderable_content.text
+            .iter()
+            .for_each(|text_item| {
+                painter.text(
+                    text_item.position,
+                    Align2::CENTER_TOP,
+                    text_item.content,
+                    self.font.font_type(),
+                    text_item.fg,
+                );
+            });
     }
 }
 
