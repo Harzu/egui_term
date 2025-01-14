@@ -3,7 +3,6 @@ mod bindings;
 mod font;
 mod theme;
 mod types;
-mod utils;
 mod view;
 
 pub use backend::settings::BackendSettings;

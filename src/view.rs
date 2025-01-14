@@ -1,8 +1,6 @@
-use alacritty_terminal::grid::GridCell;
 use alacritty_terminal::index::Point as TerminalGridPoint;
 use alacritty_terminal::term::cell;
 use alacritty_terminal::term::TermMode;
-use egui::Color32;
 use egui::Key;
 use egui::Modifiers;
 use egui::MouseWheelUnit;
@@ -224,24 +222,32 @@ impl<'a> TerminalView<'a> {
         let layout_offset = layout.rect.min;
         let cell_height = content.terminal_size.cell_height as f32;
         let cell_width = content.terminal_size.cell_width as f32;
-        let mut renderable_content = RenderableContent::default();
 
         for indexed in content.grid.display_iter() {
-            let is_inverse = indexed.cell.flags.contains(cell::Flags::INVERSE);
-            let is_dim = indexed
-                .cell
-                .flags
-                .intersects(cell::Flags::DIM | cell::Flags::DIM_BOLD);
+            let flags = indexed.cell.flags;
+            let is_wide_char_spacer =
+                flags.contains(cell::Flags::WIDE_CHAR_SPACER);
+            if is_wide_char_spacer {
+                continue;
+            }
+
+            let is_app_cursor_mode =
+                content.terminal_mode.contains(TermMode::APP_CURSOR);
+            let is_wide_char = flags.contains(cell::Flags::WIDE_CHAR);
+            let is_inverse = flags.contains(cell::Flags::INVERSE);
+            let is_dim =
+                flags.intersects(cell::Flags::DIM | cell::Flags::DIM_BOLD);
             let is_selected = content
                 .selectable_range
                 .map_or(false, |r| r.contains(indexed.point));
+            let is_hovered_hyperling =
+                content.hovered_hyperlink.as_ref().map_or(false, |r| {
+                    r.contains(&indexed.point)
+                        && r.contains(&state.current_mouse_position_on_grid)
+                });
 
             let x = layout_offset.x
-                + indexed
-                    .point
-                    .column
-                    .0
-                    .saturating_mul(cell_width as usize)
+                + indexed.point.column.0.saturating_mul(cell_width as usize)
                     as f32;
             let y = layout_offset.y
                 + indexed
@@ -254,6 +260,11 @@ impl<'a> TerminalView<'a> {
 
             let mut fg = self.theme.get_color(indexed.fg);
             let mut bg = self.theme.get_color(indexed.bg);
+            let cell_width = if is_wide_char {
+                cell_width * 2.0
+            } else {
+                cell_width
+            };
 
             if is_dim {
                 fg = fg.linear_multiply(0.7);
@@ -263,128 +274,62 @@ impl<'a> TerminalView<'a> {
                 std::mem::swap(&mut fg, &mut bg);
             }
 
-            renderable_content
-                .background
-                .push(RenderableBackgroundCell {
-                    rect: Rect::from_min_size(
-                        Pos2::new(x, y),
-                        Vec2::new(cell_width, cell_height),
-                    ),
-                    color: bg,
-                });
+            painter.rect_filled(
+                Rect::from_min_size(
+                    Pos2::new(x, y),
+                    Vec2::new(cell_width, cell_height),
+                ),
+                Rounding::ZERO,
+                bg,
+            );
 
             // Handle hovered hyperlink underline
-            if content.hovered_hyperlink.as_ref().map_or(false, |range| {
-                range.contains(&indexed.point)
-                    && range.contains(&state.current_mouse_position_on_grid)
-            }) {
+            if is_hovered_hyperling {
                 let underline_height = y + cell_height;
-                renderable_content.lines.push(RenderableLine {
-                    points: [
+                painter.line_segment(
+                    [
                         Pos2::new(x, underline_height),
                         Pos2::new(x + cell_width, underline_height),
                     ],
-                    stroke: Stroke::new(cell_height * 0.15, fg),
-                });
+                    Stroke::new(cell_height * 0.15, fg),
+                );
             }
 
             // Handle cursor rendering
             if content.grid.cursor.point == indexed.point {
                 let cursor_color = self.theme.get_color(content.cursor.fg);
-                renderable_content.cursor.push(RenderableCursorItem {
-                    rect: Rect::from_min_size(
+                // let cell_width = if is_wide_char { cell_width * 2.0 } else { cell_width };
+                painter.rect_filled(
+                    Rect::from_min_size(
                         Pos2::new(x, y),
                         Vec2::new(cell_width, cell_height),
                     ),
-                    color: cursor_color,
-                });
+                    Rounding::default(),
+                    cursor_color,
+                );
             }
 
             // Draw text content
             if indexed.c != ' ' && indexed.c != '\t' {
                 if content.grid.cursor.point == indexed.point
-                    && content.terminal_mode.contains(TermMode::APP_CURSOR)
+                    && is_app_cursor_mode
                 {
-                    fg = bg;
+                    std::mem::swap(&mut fg, &mut bg);
                 }
 
-                let x = if indexed.flags().contains(cell::Flags::WIDE_CHAR) {
-                    x + cell_width
-                } else {
-                    x + (cell_width / 2.0)
-                };
-
-                renderable_content.text.push(RenderableTextItem {
-                    content: indexed.c,
-                    position: Pos2 { x, y },
+                painter.text(
+                    Pos2 {
+                        x: x + (cell_width / 2.0),
+                        y,
+                    },
+                    Align2::CENTER_TOP,
+                    indexed.c,
+                    self.font.font_type(),
                     fg,
-                });
+                );
             }
         }
-
-        renderable_content.background
-            .iter()
-            .for_each(|bg_cell| {
-                painter.rect_filled(bg_cell.rect, Rounding::ZERO, bg_cell.color);
-            });
-
-        renderable_content.cursor
-            .iter()
-            .for_each(|cursor_item| {
-                painter.rect_filled(
-                    cursor_item.rect,
-                    Rounding::default(),
-                    cursor_item.color,
-                );
-            });
-
-        renderable_content.lines
-            .iter()
-            .for_each(|line_item| {
-                painter.line_segment(line_item.points, line_item.stroke);
-            });
-
-        renderable_content.text
-            .iter()
-            .for_each(|text_item| {
-                painter.text(
-                    text_item.position,
-                    Align2::CENTER_TOP,
-                    text_item.content,
-                    self.font.font_type(),
-                    text_item.fg,
-                );
-            });
     }
-}
-
-#[derive(Default)]
-struct RenderableContent {
-    background: Vec<RenderableBackgroundCell>,
-    text: Vec<RenderableTextItem>,
-    cursor: Vec<RenderableCursorItem>,
-    lines: Vec<RenderableLine>,
-}
-
-struct RenderableBackgroundCell {
-    rect: Rect,
-    color: Color32,
-}
-
-struct RenderableTextItem {
-    content: char,
-    position: Pos2,
-    fg: Color32,
-}
-
-struct RenderableCursorItem {
-    rect: Rect,
-    color: Color32,
-}
-
-struct RenderableLine {
-    points: [Pos2; 2],
-    stroke: Stroke,
 }
 
 fn process_keyboard_event(
