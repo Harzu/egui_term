@@ -10,7 +10,6 @@ use egui::{Id, PointerButton};
 
 use crate::backend::BackendCommand;
 use crate::backend::TerminalBackend;
-use crate::backend::TerminalSize;
 use crate::backend::{LinkAction, MouseButton, SelectionType};
 use crate::bindings::Binding;
 use crate::bindings::{BindingAction, BindingsLayout, InputKind};
@@ -44,7 +43,7 @@ pub struct TerminalView<'a> {
     bindings_layout: BindingsLayout,
 }
 
-impl<'a> Widget for TerminalView<'a> {
+impl Widget for TerminalView<'_> {
     fn ui(self, ui: &mut egui::Ui) -> Response {
         let (layout, painter) =
             ui.allocate_painter(self.size, egui::Sense::click());
@@ -221,12 +220,32 @@ impl<'a> TerminalView<'a> {
     ) {
         let content = self.backend.sync();
         let layout_offset = layout.rect.min;
-        let TerminalSize {
-            cell_height,
-            cell_width,
-            ..
-        } = content.terminal_size;
+        let cell_height = content.terminal_size.cell_height as f32;
+        let cell_width = content.terminal_size.cell_width as f32;
+
         for indexed in content.grid.display_iter() {
+            let flags = indexed.cell.flags;
+            let is_wide_char_spacer =
+                flags.contains(cell::Flags::WIDE_CHAR_SPACER);
+            if is_wide_char_spacer {
+                continue;
+            }
+
+            let is_app_cursor_mode =
+                content.terminal_mode.contains(TermMode::APP_CURSOR);
+            let is_wide_char = flags.contains(cell::Flags::WIDE_CHAR);
+            let is_inverse = flags.contains(cell::Flags::INVERSE);
+            let is_dim =
+                flags.intersects(cell::Flags::DIM | cell::Flags::DIM_BOLD);
+            let is_selected = content
+                .selectable_range
+                .map_or(false, |r| r.contains(indexed.point));
+            let is_hovered_hyperling =
+                content.hovered_hyperlink.as_ref().map_or(false, |r| {
+                    r.contains(&indexed.point)
+                        && r.contains(&state.current_mouse_position_on_grid)
+                });
+
             let x = layout_offset.x
                 + indexed.point.column.0.saturating_mul(cell_width as usize)
                     as f32;
@@ -241,76 +260,69 @@ impl<'a> TerminalView<'a> {
 
             let mut fg = self.theme.get_color(indexed.fg);
             let mut bg = self.theme.get_color(indexed.bg);
+            let cell_width = if is_wide_char {
+                cell_width * 2.0
+            } else {
+                cell_width
+            };
 
-            if indexed
-                .cell
-                .flags
-                .intersects(cell::Flags::DIM | cell::Flags::DIM_BOLD)
-            {
+            if is_dim {
                 fg = fg.linear_multiply(0.7);
             }
 
-            if indexed.cell.flags.contains(cell::Flags::INVERSE)
-                || content
-                    .selectable_range
-                    .map_or(false, |r| r.contains(indexed.point))
-            {
+            if is_inverse || is_selected {
                 std::mem::swap(&mut fg, &mut bg);
             }
 
-            painter.rect(
+            painter.rect_filled(
                 Rect::from_min_size(
                     Pos2::new(x, y),
-                    Vec2::new(cell_width as f32, cell_height as f32),
+                    Vec2::new(cell_width, cell_height),
                 ),
                 Rounding::ZERO,
                 bg,
-                Stroke::NONE,
             );
 
-            // Draw hovered hyperlink underline
-            if content.hovered_hyperlink.as_ref().map_or(false, |range| {
-                range.contains(&indexed.point)
-                    && range.contains(&state.current_mouse_position_on_grid)
-            }) {
-                let underline_height = y + cell_height as f32;
+            // Handle hovered hyperlink underline
+            if is_hovered_hyperling {
+                let underline_height = y + cell_height;
                 painter.line_segment(
                     [
                         Pos2::new(x, underline_height),
-                        Pos2::new(x + cell_width as f32, underline_height),
+                        Pos2::new(x + cell_width, underline_height),
                     ],
-                    Stroke::new(cell_height as f32 * 0.15, fg),
+                    Stroke::new(cell_height * 0.15, fg),
                 );
             }
 
             // Handle cursor rendering
             if content.grid.cursor.point == indexed.point {
                 let cursor_color = self.theme.get_color(content.cursor.fg);
-                painter.rect(
+                // let cell_width = if is_wide_char { cell_width * 2.0 } else { cell_width };
+                painter.rect_filled(
                     Rect::from_min_size(
                         Pos2::new(x, y),
-                        Vec2::new(cell_width as f32, cell_height as f32),
+                        Vec2::new(cell_width, cell_height),
                     ),
                     Rounding::default(),
                     cursor_color,
-                    Stroke::NONE,
                 );
             }
 
             // Draw text content
             if indexed.c != ' ' && indexed.c != '\t' {
                 if content.grid.cursor.point == indexed.point
-                    && content.terminal_mode.contains(TermMode::APP_CURSOR)
+                    && is_app_cursor_mode
                 {
-                    fg = bg;
+                    std::mem::swap(&mut fg, &mut bg);
                 }
 
                 painter.text(
                     Pos2 {
-                        x: x + (cell_width / 2) as f32,
-                        y: y + (cell_height / 2) as f32,
+                        x: x + (cell_width / 2.0),
+                        y,
                     },
-                    Align2::CENTER_CENTER,
+                    Align2::CENTER_TOP,
                     indexed.c,
                     self.font.font_type(),
                     fg,
@@ -373,7 +385,9 @@ fn process_text_event(
             InputAction::Ignore
         }
     } else {
-        InputAction::Ignore
+        InputAction::BackendCall(BackendCommand::Write(
+            text.as_bytes().to_vec(),
+        ))
     }
 }
 
