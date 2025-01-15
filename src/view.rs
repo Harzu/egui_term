@@ -1,6 +1,7 @@
 use alacritty_terminal::index::Point as TerminalGridPoint;
 use alacritty_terminal::term::cell;
 use alacritty_terminal::term::TermMode;
+use alacritty_terminal::vte::ansi::{Color, NamedColor};
 use egui::Key;
 use egui::Modifiers;
 use egui::MouseWheelUnit;
@@ -219,9 +220,18 @@ impl<'a> TerminalView<'a> {
         painter: &Painter,
     ) {
         let content = self.backend.sync();
-        let layout_offset = layout.rect.min;
+        let layout_min = layout.rect.min;
+        let layout_max = layout.rect.min;
+
         let cell_height = content.terminal_size.cell_height as f32;
         let cell_width = content.terminal_size.cell_width as f32;
+
+        // fill all grid cell
+        painter.rect_filled(
+            Rect::from_min_max(layout_min, layout_max),
+            Rounding::ZERO,
+            self.theme.get_color(Color::Named(NamedColor::Background)),
+        );
 
         for indexed in content.grid.display_iter() {
             let flags = indexed.cell.flags;
@@ -246,10 +256,10 @@ impl<'a> TerminalView<'a> {
                         && r.contains(&state.current_mouse_position_on_grid)
                 });
 
-            let x = layout_offset.x
+            let x = layout_min.x
                 + indexed.point.column.0.saturating_mul(cell_width as usize)
                     as f32;
-            let y = layout_offset.y
+            let y = layout_min.y
                 + indexed
                     .point
                     .line
@@ -272,16 +282,17 @@ impl<'a> TerminalView<'a> {
 
             if is_inverse || is_selected {
                 std::mem::swap(&mut fg, &mut bg);
-            }
 
-            painter.rect_filled(
-                Rect::from_min_size(
-                    Pos2::new(x, y),
-                    Vec2::new(cell_width, cell_height),
-                ),
-                Rounding::ZERO,
-                bg,
-            );
+                painter.rect_filled(
+                    Rect::from_min_size(
+                        Pos2::new(x, y),
+                        // + 1.0 is to fill grid border
+                        Vec2::new(cell_width + 1.0, cell_height + 1.0),
+                    ),
+                    Rounding::ZERO,
+                    bg,
+                );
+            }
 
             // Handle hovered hyperlink underline
             if is_hovered_hyperling {
