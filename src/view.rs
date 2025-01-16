@@ -221,16 +221,19 @@ impl<'a> TerminalView<'a> {
     ) {
         let content = self.backend.sync();
         let layout_min = layout.rect.min;
-        let layout_max = layout.rect.min;
+        let layout_max = layout.rect.max;
 
         let cell_height = content.terminal_size.cell_height as f32;
         let cell_width = content.terminal_size.cell_width as f32;
+
+        let global_bg =
+            self.theme.get_color(Color::Named(NamedColor::Background));
 
         // fill all grid cell
         painter.rect_filled(
             Rect::from_min_max(layout_min, layout_max),
             Rounding::ZERO,
-            self.theme.get_color(Color::Named(NamedColor::Background)),
+            global_bg,
         );
 
         for indexed in content.grid.display_iter() {
@@ -282,12 +285,14 @@ impl<'a> TerminalView<'a> {
 
             if is_inverse || is_selected {
                 std::mem::swap(&mut fg, &mut bg);
+            }
 
+            if is_inverse || is_selected || global_bg != bg {
                 painter.rect_filled(
                     Rect::from_min_size(
                         Pos2::new(x, y),
                         // + 1.0 is to fill grid border
-                        Vec2::new(cell_width + 1.0, cell_height + 1.0),
+                        Vec2::new(cell_width + 1., cell_height + 1.),
                     ),
                     Rounding::ZERO,
                     bg,
