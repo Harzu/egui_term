@@ -6,6 +6,7 @@ use std::collections::HashMap;
 pub struct ColorPalette {
     pub foreground: String,
     pub background: String,
+    pub selection: String,
     pub black: String,
     pub red: String,
     pub green: String,
@@ -39,6 +40,7 @@ impl Default for ColorPalette {
         Self {
             foreground: String::from("#d8d8d8"),
             background: String::from("#181818"),
+            selection: String::from("#35405b"),
             black: String::from("#181818"),
             red: String::from("#ac4242"),
             green: String::from("#90a959"),
@@ -202,6 +204,12 @@ impl TerminalTheme {
                     .unwrap_or_else(|_| panic!("invalid color {}", color))
             },
         }
+    }
+
+    pub fn get_selection_color(&self) -> Color32 {
+        let color = hex_to_color(&self.palette.selection)
+            .unwrap_or_else(|_| panic!("invalid color {}", &self.palette.selection));
+        color.gamma_multiply(0.5)
     }
 }
 

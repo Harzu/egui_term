@@ -284,16 +284,20 @@ impl<'a> TerminalView<'a> {
                 fg = fg.linear_multiply(0.7);
             }
 
-            if is_inverse || is_selected {
+            if is_inverse {
                 std::mem::swap(&mut fg, &mut bg);
             }
 
-            if is_inverse || is_selected || global_bg != bg {
+            if is_selected {
+                bg = self.theme.get_selection_color()
+            }
+
+            if global_bg != bg {
                 shapes.push(Shape::Rect(RectShape::filled(
                     Rect::from_min_size(
                         Pos2::new(x, y),
                         // + 1.0 is to fill grid border
-                        Vec2::new(cell_width + 1., cell_height + 1.),
+                        Vec2::new(cell_width, cell_height),
                     ),
                     Rounding::ZERO,
                     bg,
