@@ -229,13 +229,11 @@ impl<'a> TerminalView<'a> {
         let global_bg =
             self.theme.get_color(Color::Named(NamedColor::Background));
 
-        let mut shapes= vec![
-            Shape::Rect(RectShape::filled(
-                Rect::from_min_max(layout_min, layout_max),
-                Rounding::ZERO,
-                global_bg,
-            ))
-        ];
+        let mut shapes = vec![Shape::Rect(RectShape::filled(
+            Rect::from_min_max(layout_min, layout_max),
+            Rounding::ZERO,
+            global_bg,
+        ))];
 
         for indexed in content.grid.display_iter() {
             let flags = indexed.cell.flags;
@@ -253,15 +251,16 @@ impl<'a> TerminalView<'a> {
                 flags.intersects(cell::Flags::DIM | cell::Flags::DIM_BOLD);
             let is_selected = content
                 .selectable_range
-                .map_or(false, |r| r.contains(indexed.point));
+                .is_some_and(|r| r.contains(indexed.point));
             let is_hovered_hyperling =
-                content.hovered_hyperlink.as_ref().map_or(false, |r| {
+                content.hovered_hyperlink.as_ref().is_some_and(|r| {
                     r.contains(&indexed.point)
                         && r.contains(&state.current_mouse_position_on_grid)
                 });
 
             let x = layout_min.x + (cell_width * indexed.point.column.0 as f32);
-            let line_num = indexed.point.line.0 + content.grid.display_offset() as i32;
+            let line_num =
+                indexed.point.line.0 + content.grid.display_offset() as i32;
             let y = layout_min.y + (cell_height * line_num as f32);
 
             let mut fg = self.theme.get_color(indexed.fg);
