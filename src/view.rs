@@ -260,17 +260,9 @@ impl<'a> TerminalView<'a> {
                         && r.contains(&state.current_mouse_position_on_grid)
                 });
 
-            let x = layout_min.x
-                + indexed.point.column.0.saturating_mul(cell_width as usize)
-                    as f32;
-            let y = layout_min.y
-                + indexed
-                    .point
-                    .line
-                    .0
-                    .saturating_add(content.grid.display_offset() as i32)
-                    .saturating_mul(cell_height as i32)
-                    as f32;
+            let x = layout_min.x + (cell_width * indexed.point.column.0 as f32);
+            let line_num = indexed.point.line.0 + content.grid.display_offset() as i32;
+            let y = layout_min.y + (cell_height * line_num as f32);
 
             let mut fg = self.theme.get_color(indexed.fg);
             let mut bg = self.theme.get_color(indexed.bg);
@@ -284,12 +276,8 @@ impl<'a> TerminalView<'a> {
                 fg = fg.linear_multiply(0.7);
             }
 
-            if is_inverse {
+            if is_inverse || is_selected {
                 std::mem::swap(&mut fg, &mut bg);
-            }
-
-            if is_selected {
-                bg = self.theme.get_selection_color()
             }
 
             if global_bg != bg {
@@ -297,7 +285,7 @@ impl<'a> TerminalView<'a> {
                     Rect::from_min_size(
                         Pos2::new(x, y),
                         // + 1.0 is to fill grid border
-                        Vec2::new(cell_width, cell_height),
+                        Vec2::new(cell_width + 1., cell_height + 1.),
                     ),
                     Rounding::ZERO,
                     bg,
