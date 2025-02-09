@@ -362,8 +362,19 @@ fn process_keyboard_event(
             BackendCommand::Write(text.as_bytes().to_vec()),
         ),
         egui::Event::Copy => {
-            let content = backend.selectable_content();
-            InputAction::WriteToClipboard(content)
+            #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+            if backend.is_selected_mode() {
+                let content = backend.selectable_content();
+                InputAction::WriteToClipboard(content)
+            } else {
+                // Hotfix - Send ^C when there's not selection on view.
+                InputAction::BackendCall(BackendCommand::Write([0x3].to_vec()))
+            }
+            #[cfg(any(target_os = "ios", target_os = "macos"))]
+            {
+                let content = backend.selectable_content();
+                InputAction::WriteToClipboard(content)
+            }
         },
         egui::Event::Key {
             key,

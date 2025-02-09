@@ -243,6 +243,10 @@ impl TerminalBackend {
         viewport_to_point(display_offset, Point::new(line, col))
     }
 
+    pub fn is_selected_mode(&self) -> bool {
+        self.last_content().selectable_range.is_some()
+    }
+
     pub fn selectable_content(&self) -> String {
         let content = self.last_content();
         let mut result = String::new();
