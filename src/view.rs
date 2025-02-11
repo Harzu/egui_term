@@ -2,9 +2,11 @@ use alacritty_terminal::index::Point as TerminalGridPoint;
 use alacritty_terminal::term::cell;
 use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::{Color, NamedColor};
+use egui::epaint::RectShape;
 use egui::Key;
 use egui::Modifiers;
 use egui::MouseWheelUnit;
+use egui::Shape;
 use egui::Widget;
 use egui::{Align2, Painter, Pos2, Rect, Response, Rounding, Stroke, Vec2};
 use egui::{Id, PointerButton};
@@ -27,7 +29,7 @@ enum InputAction {
     Ignore,
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default)]
 pub struct TerminalViewState {
     is_dragged: bool,
     scroll_pixels: f32,
@@ -222,19 +224,16 @@ impl<'a> TerminalView<'a> {
         let content = self.backend.sync();
         let layout_min = layout.rect.min;
         let layout_max = layout.rect.max;
-
         let cell_height = content.terminal_size.cell_height as f32;
         let cell_width = content.terminal_size.cell_width as f32;
-
         let global_bg =
             self.theme.get_color(Color::Named(NamedColor::Background));
 
-        // fill all grid cell
-        painter.rect_filled(
+        let mut shapes = vec![Shape::Rect(RectShape::filled(
             Rect::from_min_max(layout_min, layout_max),
             Rounding::ZERO,
             global_bg,
-        );
+        ))];
 
         for indexed in content.grid.display_iter() {
             let flags = indexed.cell.flags;
@@ -252,24 +251,17 @@ impl<'a> TerminalView<'a> {
                 flags.intersects(cell::Flags::DIM | cell::Flags::DIM_BOLD);
             let is_selected = content
                 .selectable_range
-                .map_or(false, |r| r.contains(indexed.point));
+                .is_some_and(|r| r.contains(indexed.point));
             let is_hovered_hyperling =
-                content.hovered_hyperlink.as_ref().map_or(false, |r| {
+                content.hovered_hyperlink.as_ref().is_some_and(|r| {
                     r.contains(&indexed.point)
                         && r.contains(&state.current_mouse_position_on_grid)
                 });
 
-            let x = layout_min.x
-                + indexed.point.column.0.saturating_mul(cell_width as usize)
-                    as f32;
-            let y = layout_min.y
-                + indexed
-                    .point
-                    .line
-                    .0
-                    .saturating_add(content.grid.display_offset() as i32)
-                    .saturating_mul(cell_height as i32)
-                    as f32;
+            let x = layout_min.x + (cell_width * indexed.point.column.0 as f32);
+            let line_num =
+                indexed.point.line.0 + content.grid.display_offset() as i32;
+            let y = layout_min.y + (cell_height * line_num as f32);
 
             let mut fg = self.theme.get_color(indexed.fg);
             let mut bg = self.theme.get_color(indexed.bg);
@@ -287,8 +279,8 @@ impl<'a> TerminalView<'a> {
                 std::mem::swap(&mut fg, &mut bg);
             }
 
-            if is_inverse || is_selected || global_bg != bg {
-                painter.rect_filled(
+            if global_bg != bg {
+                shapes.push(Shape::Rect(RectShape::filled(
                     Rect::from_min_size(
                         Pos2::new(x, y),
                         // + 1.0 is to fill grid border
@@ -296,33 +288,32 @@ impl<'a> TerminalView<'a> {
                     ),
                     Rounding::ZERO,
                     bg,
-                );
+                )));
             }
 
             // Handle hovered hyperlink underline
             if is_hovered_hyperling {
                 let underline_height = y + cell_height;
-                painter.line_segment(
-                    [
+                shapes.push(Shape::LineSegment {
+                    points: [
                         Pos2::new(x, underline_height),
                         Pos2::new(x + cell_width, underline_height),
                     ],
-                    Stroke::new(cell_height * 0.15, fg),
-                );
+                    stroke: Stroke::new(cell_height * 0.15, fg).into(),
+                });
             }
 
             // Handle cursor rendering
             if content.grid.cursor.point == indexed.point {
                 let cursor_color = self.theme.get_color(content.cursor.fg);
-                // let cell_width = if is_wide_char { cell_width * 2.0 } else { cell_width };
-                painter.rect_filled(
+                shapes.push(Shape::Rect(RectShape::filled(
                     Rect::from_min_size(
                         Pos2::new(x, y),
                         Vec2::new(cell_width, cell_height),
                     ),
                     Rounding::default(),
                     cursor_color,
-                );
+                )));
             }
 
             // Draw text content
@@ -333,7 +324,8 @@ impl<'a> TerminalView<'a> {
                     std::mem::swap(&mut fg, &mut bg);
                 }
 
-                painter.text(
+                shapes.push(Shape::text(
+                    &painter.fonts(|c| c.clone()),
                     Pos2 {
                         x: x + (cell_width / 2.0),
                         y,
@@ -342,9 +334,11 @@ impl<'a> TerminalView<'a> {
                     indexed.c,
                     self.font.font_type(),
                     fg,
-                );
+                ));
             }
         }
+
+        painter.extend(shapes);
     }
 }
 
