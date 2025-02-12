@@ -363,7 +363,7 @@ fn process_keyboard_event(
         ),
         egui::Event::Copy => {
             #[cfg(not(any(target_os = "ios", target_os = "macos")))]
-            if backend.is_selected_mode() {
+            if modifiers.contains(Modifiers::COMMAND | Modifiers::SHIFT) {
                 let content = backend.selectable_content();
                 InputAction::WriteToClipboard(content)
             } else {
