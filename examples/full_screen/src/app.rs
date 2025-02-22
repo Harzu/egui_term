@@ -9,10 +9,13 @@ pub struct App {
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let system_shell = std::env::var("SHELL")
-            .expect("SHELL variable is not defined")
-            .to_string();
-
+        let system_shell: String = if cfg!(target_os = "windows") {
+            "powershell.exe".to_string()
+        } else {
+            std::env::var("SHELL")
+                .expect("SHELL variable is not defined")
+                .to_string()
+        };
         let (pty_proxy_sender, pty_proxy_receiver) = std::sync::mpsc::channel();
         let terminal_backend = TerminalBackend::new(
             0,
