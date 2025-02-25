@@ -3,12 +3,12 @@ use alacritty_terminal::term::cell;
 use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::{Color, NamedColor};
 use egui::epaint::RectShape;
-use egui::Key;
+use egui::{CornerRadius, Key};
 use egui::Modifiers;
 use egui::MouseWheelUnit;
 use egui::Shape;
 use egui::Widget;
-use egui::{Align2, Painter, Pos2, Rect, Response, Rounding, Stroke, Vec2};
+use egui::{Align2, Painter, Pos2, Rect, Response, Stroke, Vec2};
 use egui::{Id, PointerButton};
 
 use crate::backend::BackendCommand;
@@ -205,7 +205,7 @@ impl<'a> TerminalView<'a> {
                         self.backend.process_command(cmd);
                     },
                     InputAction::WriteToClipboard(data) => {
-                        layout.ctx.output_mut(|o| o.copied_text = data);
+                        layout.ctx.copy_text(data);
                     },
                     InputAction::Ignore => {},
                 }
@@ -231,7 +231,7 @@ impl<'a> TerminalView<'a> {
 
         let mut shapes = vec![Shape::Rect(RectShape::filled(
             Rect::from_min_max(layout_min, layout_max),
-            Rounding::ZERO,
+            CornerRadius::ZERO,
             global_bg,
         ))];
 
@@ -286,7 +286,7 @@ impl<'a> TerminalView<'a> {
                         // + 1.0 is to fill grid border
                         Vec2::new(cell_width + 1., cell_height + 1.),
                     ),
-                    Rounding::ZERO,
+                    CornerRadius::ZERO,
                     bg,
                 )));
             }
@@ -311,7 +311,7 @@ impl<'a> TerminalView<'a> {
                         Pos2::new(x, y),
                         Vec2::new(cell_width, cell_height),
                     ),
-                    Rounding::default(),
+                    CornerRadius::default(),
                     cursor_color,
                 )));
             }
