@@ -277,6 +277,10 @@ impl TerminalBackend {
         &self.last_content
     }
 
+    pub fn send_sigint(&self) {
+        self.notifier.notify(&[0x3]); // End of Text (^C)
+    }
+
     fn process_link_action(
         &mut self,
         terminal: &Term<EventProxy>,
