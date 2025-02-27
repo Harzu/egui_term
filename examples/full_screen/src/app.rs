@@ -20,7 +20,7 @@ impl App {
             pty_proxy_sender.clone(),
             egui_term::BackendSettings {
                 shell: system_shell,
-                args: vec![],
+                ..Default::default()
             },
         )
         .unwrap();

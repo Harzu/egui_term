@@ -169,7 +169,7 @@ impl Tab {
             command_sender,
             egui_term::BackendSettings {
                 shell: system_shell,
-                args: vec![],
+                ..Default::default()
             },
         )
         .unwrap();
