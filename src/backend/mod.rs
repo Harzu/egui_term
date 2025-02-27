@@ -150,7 +150,7 @@ impl TerminalBackend {
         settings: BackendSettings,
     ) -> Result<Self> {
         let pty_config = tty::Options {
-            shell: Some(tty::Shell::new(settings.shell, vec![])),
+            shell: Some(tty::Shell::new(settings.shell, settings.args)),
             ..tty::Options::default()
         };
         let config = term::Config::default();
