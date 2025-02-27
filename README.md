@@ -44,5 +44,5 @@ You can also look at [examples](./examples) directory for more information about
 
 ## Dependencies
 
- - [egui (0.30.0)](https://github.com/emilk/egui)
- - [alacritty_terminal (0.24.1)](https://github.com/zed-industries/zed/pull/12687/files)
+ - [egui (0.31.0)](https://github.com/emilk/egui)
+ - [alacritty_terminal (0.25.0)](https://github.com/alacritty/alacritty)

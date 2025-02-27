@@ -9,7 +9,7 @@ categories = ["gui", "terminal", "tty", "shell"]
 license = "MIT"
 
 [dependencies]
-egui = "0.30.0"
-alacritty_terminal = "0.24.1"
-anyhow = "1.0.95"
+egui = "0.31.0"
+alacritty_terminal = "0.25.0"
+anyhow = "1.0.96"
 open = "5.3.2"
