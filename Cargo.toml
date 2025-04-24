@@ -5,7 +5,7 @@ authors = ["Ilya Shvyryalkin <ilyashvy@gmail.com>"]
 version = "0.1.0"
 edition = "2021"
 repository = "https://github.com/Harzu/egui_term"
-categories = ["gui", "terminal", "tty", "shell"]
+categories = ["gui"]
 license = "MIT"
 
 [dependencies]
