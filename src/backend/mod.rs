@@ -134,8 +134,9 @@ impl From<TerminalSize> for WindowSize {
 }
 
 pub struct TerminalBackend {
-    pub id: u64,
-    pub url_regex: RegexSearch,
+    id: u64,
+    pty_id: u32,
+    url_regex: RegexSearch,
     term: Arc<FairMutex<Term<EventProxy>>>,
     size: TerminalSize,
     notifier: Notifier,
@@ -157,6 +158,7 @@ impl TerminalBackend {
         let config = term::Config::default();
         let terminal_size = TerminalSize::default();
         let pty = tty::new(&pty_config, terminal_size.into(), id)?;
+        let pty_id = pty.child().id();
         let (event_sender, event_receiver) = mpsc::channel();
         let event_proxy = EventProxy(event_sender);
         let mut term = Term::new(config, &terminal_size, event_proxy.clone());
@@ -192,6 +194,7 @@ impl TerminalBackend {
 
         Ok(Self {
             id,
+            pty_id,
             url_regex,
             term: term.clone(),
             size: terminal_size,
@@ -276,6 +279,14 @@ impl TerminalBackend {
 
     pub fn last_content(&self) -> &RenderableContent {
         &self.last_content
+    }
+
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
+    pub fn pty_id(&self) -> u32 {
+        self.pty_id
     }
 
     fn process_link_action(

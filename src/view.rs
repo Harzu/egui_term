@@ -72,7 +72,7 @@ impl<'a> TerminalView<'a> {
     pub fn new(ui: &mut egui::Ui, backend: &'a mut TerminalBackend) -> Self {
         let widget_id = ui.make_persistent_id(format!(
             "{}{}",
-            EGUI_TERM_WIDGET_ID_PREFIX, backend.id
+            EGUI_TERM_WIDGET_ID_PREFIX, backend.id()
         ));
 
         Self {
