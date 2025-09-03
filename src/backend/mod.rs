@@ -174,6 +174,7 @@ impl TerminalBackend {
         let pty_event_loop =
             EventLoop::new(term.clone(), event_proxy, pty, false, false)?;
         let notifier = Notifier(pty_event_loop.channel());
+        let pty_notifier = Notifier(pty_event_loop.channel());
         let url_regex = RegexSearch::new(r#"(ipfs:|ipns:|magnet:|mailto:|gemini://|gopher://|https://|http://|news:|file://|git://|ssh:|ftp://)[^\u{0000}-\u{001F}\u{007F}-\u{009F}<>"\s{-}\^⟨⟩`]+"#).unwrap();
         let _pty_event_loop_thread = pty_event_loop.spawn();
         let _pty_event_subscription = std::thread::Builder::new()
@@ -186,8 +187,10 @@ impl TerminalBackend {
                             panic!("pty_event_subscription_{}: sending PtyEvent is failed", id)
                         });
                     app_context.clone().request_repaint();
-                    if let Event::Exit = event {
-                        break;
+                    match event {
+                        Event::Exit => break,
+                        Event::PtyWrite(pty) => pty_notifier.notify(pty.into_bytes()),
+                        _ => {}
                     }
                 }
             })?;
