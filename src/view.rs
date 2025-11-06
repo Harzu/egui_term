@@ -3,12 +3,12 @@ use alacritty_terminal::term::cell;
 use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::{Color, NamedColor};
 use egui::epaint::RectShape;
-use egui::{CornerRadius, Key};
 use egui::Modifiers;
 use egui::MouseWheelUnit;
 use egui::Shape;
 use egui::Widget;
 use egui::{Align2, Painter, Pos2, Rect, Response, Stroke, Vec2};
+use egui::{CornerRadius, Key};
 use egui::{Id, PointerButton};
 
 use crate::backend::BackendCommand;
@@ -72,7 +72,8 @@ impl<'a> TerminalView<'a> {
     pub fn new(ui: &mut egui::Ui, backend: &'a mut TerminalBackend) -> Self {
         let widget_id = ui.make_persistent_id(format!(
             "{}{}",
-            EGUI_TERM_WIDGET_ID_PREFIX, backend.id()
+            EGUI_TERM_WIDGET_ID_PREFIX,
+            backend.id()
         ));
 
         Self {
@@ -323,18 +324,19 @@ impl<'a> TerminalView<'a> {
                 {
                     std::mem::swap(&mut fg, &mut bg);
                 }
-
-                shapes.push(Shape::text(
-                    &painter.fonts(|c| c.clone()),
-                    Pos2 {
-                        x: x + (cell_width / 2.0),
-                        y,
-                    },
-                    Align2::CENTER_TOP,
-                    indexed.c,
-                    self.font.font_type(),
-                    fg,
-                ));
+                shapes.push(painter.fonts_mut(|f| {
+                    Shape::text(
+                        f,
+                        Pos2 {
+                            x: x + (cell_width / 2.0),
+                            y,
+                        },
+                        Align2::CENTER_TOP,
+                        indexed.c,
+                        self.font.font_type(),
+                        fg,
+                    )
+                }))
             }
         }
 
