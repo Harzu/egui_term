@@ -1,5 +1,6 @@
 use eframe::epaint::FontId;
 use egui::{Context, Ui};
+use egui_dock::tab_viewer::OnCloseResponse;
 use egui_dock::{DockArea, DockState, NodeIndex, Style};
 use egui_term::{
     BackendSettings, FontSettings, PtyEvent, TerminalBackend, TerminalFont,
@@ -36,12 +37,21 @@ pub struct Tab {
 
 impl Tab {
     pub fn term(ctx: Context, command_sender: Sender<(u64, PtyEvent)>) -> Self {
+        #[cfg(unix)]
+        let system_shell =
+            std::env::var("SHELL").expect("SHELL variable is not defined");
+        #[cfg(windows)]
+        let system_shell = "cmd.exe".to_string();
+        
         let id = GLOBAL_COUNTER.next();
         let backend = TerminalBackend::new(
             id,
             ctx,
             command_sender,
-            BackendSettings::default(),
+            BackendSettings {
+                shell: system_shell,
+                ..Default::default()
+            },
         )
         .unwrap();
 
@@ -70,13 +80,13 @@ impl egui_dock::TabViewer for TabViewer<'_> {
         ui.add(terminal);
     }
 
-    fn on_close(&mut self, tab: &mut Self::Tab) -> bool {
+    fn on_close(&mut self, tab: &mut Self::Tab) -> OnCloseResponse {
         match self.command_sender.send((tab.id, PtyEvent::Exit)) {
             Err(err) => {
                 error!("close tab {} failed: {err}", tab.id);
-                false
+                OnCloseResponse::Ignore
             },
-            Ok(_) => true,
+            Ok(_) => OnCloseResponse::Close,
         }
     }
 }
