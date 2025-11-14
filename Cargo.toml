@@ -1,3 +1,18 @@
+[workspace]
+members = ["examples/*"]
+
+# dependencies that are shared throughout the workspace (mostly for examples)
+[workspace.dependencies]
+egui = "0.32"
+eframe = { version = "0.32", default-features = false, features = [
+    "accesskit",     # Make egui compatible with screen readers. NOTE: adds a lot of dependencies.
+    "default_fonts", # Embed the default egui fonts.
+    "wgpu",          # Use the glow rendering backend. Alternative: "wgpu".
+    "persistence",   # Enable restoring app state when restarting the app.
+] }
+env_logger = "0.11.6"
+log = "0.4"
+
 [package]
 name = "egui_term"
 description = "Terminal emulator widget powered by EGUI framework and alacritty terminal backend."
@@ -9,7 +24,7 @@ categories = ["gui"]
 license = "MIT"
 
 [dependencies]
-egui = "0.32"
+egui = { workspace = true }
 alacritty_terminal = "0.25.0"
 anyhow = "1.0.96"
 open = "5.3.2"
