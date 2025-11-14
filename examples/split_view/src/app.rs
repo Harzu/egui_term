@@ -42,7 +42,7 @@ impl Tab {
             std::env::var("SHELL").expect("SHELL variable is not defined");
         #[cfg(windows)]
         let system_shell = "cmd.exe".to_string();
-        
+
         let id = GLOBAL_COUNTER.next();
         let backend = TerminalBackend::new(
             id,
