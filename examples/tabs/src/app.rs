@@ -159,9 +159,11 @@ impl Tab {
         command_sender: Sender<(u64, PtyEvent)>,
         id: u64,
     ) -> Self {
-        let system_shell = std::env::var("SHELL")
-            .expect("SHELL variable is not defined")
-            .to_string();
+        #[cfg(unix)]
+        let system_shell =
+            std::env::var("SHELL").expect("SHELL variable is not defined");
+        #[cfg(windows)]
+        let system_shell = "cmd.exe".to_string();
 
         let backend = TerminalBackend::new(
             id,

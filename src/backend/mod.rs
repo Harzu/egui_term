@@ -158,7 +158,14 @@ impl TerminalBackend {
         let config = term::Config::default();
         let terminal_size = TerminalSize::default();
         let pty = tty::new(&pty_config, terminal_size.into(), id)?;
+        #[cfg(not(target_os = "windows"))]
         let pty_id = pty.child().id();
+        #[cfg(target_os = "windows")]
+        let pty_id = pty
+            .child_watcher()
+            .pid()
+            .ok_or(std::io::ErrorKind::NotFound)?
+            .into();
         let (event_sender, event_receiver) = mpsc::channel();
         let event_proxy = EventProxy(event_sender);
         let mut term = Term::new(config, &terminal_size, event_proxy.clone());
