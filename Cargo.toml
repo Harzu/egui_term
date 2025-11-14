@@ -12,6 +12,7 @@ eframe = { version = "0.32", default-features = false, features = [
 ] }
 env_logger = "0.11.6"
 log = "0.4"
+wgpu = "25" # enables the wgpu default features so we get the default backends
 
 [package]
 name = "egui_term"
