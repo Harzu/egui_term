@@ -300,7 +300,7 @@ impl<'a> TerminalView<'a> {
                         Pos2::new(x, underline_height),
                         Pos2::new(x + cell_width, underline_height),
                     ],
-                    stroke: Stroke::new(cell_height * 0.15, fg).into(),
+                    stroke: Stroke::new(cell_height * 0.15, fg),
                 });
             }
 
