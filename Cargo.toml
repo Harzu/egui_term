@@ -3,8 +3,8 @@ members = ["examples/*"]
 
 # dependencies that are shared throughout the workspace (mostly for examples)
 [workspace.dependencies]
-egui = "0.32"
-eframe = { version = "0.32", default-features = false, features = [
+egui = "0.33"
+eframe = { version = "0.33", default-features = false, features = [
     "accesskit",     # Make egui compatible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts", # Embed the default egui fonts.
     "wgpu",          # Use the glow rendering backend. Alternative: "wgpu".
@@ -12,7 +12,7 @@ eframe = { version = "0.32", default-features = false, features = [
 ] }
 env_logger = "0.11.6"
 log = "0.4"
-wgpu = "25" # enables the wgpu default features so we get the default backends
+wgpu = "27" # enables the wgpu default features so we get the default backends
 
 [package]
 name = "egui_term"
@@ -26,6 +26,6 @@ license = "MIT"
 
 [dependencies]
 egui = { workspace = true }
-alacritty_terminal = "0.25.0"
-anyhow = "1.0.96"
+alacritty_terminal = "0.25.1"
+anyhow = "1.0.100"
 open = "5.3.2"

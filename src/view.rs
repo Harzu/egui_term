@@ -325,17 +325,19 @@ impl<'a> TerminalView<'a> {
                     std::mem::swap(&mut fg, &mut bg);
                 }
 
-                shapes.push(Shape::text(
-                    &painter.fonts(|c| c.clone()),
-                    Pos2 {
-                        x: x + (cell_width / 2.0),
-                        y,
-                    },
-                    Align2::CENTER_TOP,
-                    indexed.c,
-                    self.font.font_type(),
-                    fg,
-                ));
+                shapes.push(painter.fonts_mut(|c| {
+                    Shape::text(
+                        c,
+                        Pos2 {
+                            x: x + (cell_width / 2.0),
+                            y,
+                        },
+                        Align2::CENTER_TOP,
+                        indexed.c,
+                        self.font.font_type(),
+                        fg,
+                    )
+                }));
             }
         }
 
