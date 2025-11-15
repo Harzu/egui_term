@@ -40,7 +40,7 @@ impl TerminalFont {
     }
 
     pub fn font_measure(&self, ctx: &Context) -> Size {
-        let (width, height) = ctx.fonts(|f| {
+        let (width, height) = ctx.fonts_mut(|f| {
             (
                 f.glyph_width(&self.font_type, 'm'),
                 f.row_height(&self.font_type),
