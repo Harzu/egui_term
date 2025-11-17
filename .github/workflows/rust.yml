@@ -3,8 +3,18 @@ name: Rust CI
 on:
   push:
     branches: [main]
+    paths:
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - Cargo.lock
+      - .github/workflows/rust.yml
   pull_request:
     branches: [main]
+    paths:
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - Cargo.lock
+      - .github/workflows/rust.yml
 
 permissions: {}
 
