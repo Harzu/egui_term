@@ -10,9 +10,9 @@ eframe = { version = "0.33", default-features = false, features = [
     "wgpu",          # Use the glow rendering backend. Alternative: "wgpu".
     "persistence",   # Enable restoring app state when restarting the app.
 ] }
-env_logger = "0.11.9"
+env_logger = "0.11.10"
 log = "0.4"
-wgpu = "28" # enables the wgpu default features so we get the default backends
+wgpu = "29" # enables the wgpu default features so we get the default backends
 
 [package]
 name = "egui_term"
