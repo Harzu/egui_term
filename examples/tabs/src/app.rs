@@ -161,9 +161,15 @@ impl Tab {
     ) -> Self {
         #[cfg(unix)]
         let system_shell =
-            std::env::var("SHELL").expect("SHELL variable is not defined");
+            std::env::var("SHELL").unwrap_or_else(|_| "bash".to_string());
         #[cfg(windows)]
         let system_shell = "cmd.exe".to_string();
+
+        let shell_args = if system_shell.contains("bash") {
+            vec!["--login".to_string()]
+        } else {
+            vec![]
+        };
 
         let backend = TerminalBackend::new(
             id,
@@ -171,6 +177,7 @@ impl Tab {
             command_sender,
             egui_term::BackendSettings {
                 shell: system_shell,
+                args: shell_args,
                 ..Default::default()
             },
         )

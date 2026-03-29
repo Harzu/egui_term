@@ -303,8 +303,10 @@ fn default_keyboard_bindings() -> Vec<(Binding<InputKind>, BindingAction)> {
         // CTRL + ALT
         End,        Modifiers::CTRL | Modifiers::ALT; BindingAction::Esc("\x1b[1;7F".into());
         Home,       Modifiers::CTRL | Modifiers::ALT; BindingAction::Esc("\x1b[1;7H".into());
-        PageUp,     Modifiers::CTRL | Modifiers::ALT; BindingAction::Esc("\x1b[5;7~".into());
-        PageDown,   Modifiers::CTRL | Modifiers::ALT; BindingAction::Esc("\x1b[6;7~".into());
+        PageUp,       Modifiers::CTRL | Modifiers::ALT; BindingAction::Esc("\x1b[5;7~".into());
+        PageDown,     Modifiers::CTRL | Modifiers::ALT; BindingAction::Esc("\x1b[6;7~".into());
+        PageUp,       Modifiers::SHIFT | Modifiers::CTRL; BindingAction::Esc("\x1b[5;6~".into());
+        PageDown,     Modifiers::SHIFT | Modifiers::CTRL; BindingAction::Esc("\x1b[6;6~".into());
         ArrowUp,    Modifiers::CTRL | Modifiers::ALT; BindingAction::Esc("\x1b[1;7A".into());
         ArrowDown,  Modifiers::CTRL | Modifiers::ALT; BindingAction::Esc("\x1b[1;7B".into());
         ArrowLeft,  Modifiers::CTRL | Modifiers::ALT; BindingAction::Esc("\x1b[1;7D".into());

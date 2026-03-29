@@ -29,3 +29,4 @@ egui = { workspace = true }
 alacritty_terminal = "0.25.1"
 anyhow = "1.0.100"
 open = "5.3.2"
+libc = "0.2"
