@@ -1,4 +1,4 @@
-use egui::{FontId, Vec2};
+use egui::FontId;
 use egui_term::{
     FontSettings, PtyEvent, TerminalBackend, TerminalFont, TerminalView,
 };
@@ -82,24 +82,24 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         if let Ok((_, PtyEvent::Exit)) = self.pty_proxy_receiver.try_recv() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }
 
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+        egui::Panel::top("top_panel").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.button(TERM_FONT_JET_BRAINS_NAME).clicked() {
-                    setup_font(ctx, TERM_FONT_JET_BRAINS_NAME);
+                    setup_font(ui.ctx(), TERM_FONT_JET_BRAINS_NAME);
                 }
 
                 if ui.button(TERM_FONT_3270_NAME).clicked() {
-                    setup_font(ctx, TERM_FONT_3270_NAME);
+                    setup_font(ui.ctx(), TERM_FONT_3270_NAME);
                 }
 
                 if ui.button(TERM_FONT_CJK_NAME).clicked() {
-                    setup_font(ctx, TERM_FONT_CJK_NAME);
+                    setup_font(ui.ctx(), TERM_FONT_CJK_NAME);
                 }
             });
 
@@ -114,16 +114,13 @@ impl eframe::App for App {
             });
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let terminal = TerminalView::new(ui, &mut self.terminal_backend)
                 .set_focus(true)
                 .set_font(TerminalFont::new(FontSettings {
                     font_type: FontId::proportional(self.font_size),
                 }))
-                .set_size(Vec2::new(
-                    ui.available_width(),
-                    ui.available_height(),
-                ));
+                .set_size(ui.available_size());
 
             ui.add(terminal);
         });

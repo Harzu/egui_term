@@ -22,8 +22,8 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if ctx.input(|i| i.viewport().close_requested()) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if ui.ctx().input(|i| i.viewport().close_requested()) {
             self.tab_manager.clear();
         }
 
@@ -39,7 +39,7 @@ impl eframe::App for App {
             }
         }
 
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+        egui::Panel::top("top_panel").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 let tab_ids = self.tab_manager.get_tab_ids();
                 for id in tab_ids {
@@ -56,12 +56,12 @@ impl eframe::App for App {
 
                 if ui.button("[+]").clicked() {
                     self.tab_manager
-                        .add(self.command_sender.clone(), ctx.clone());
+                        .add(self.command_sender.clone(), ui.ctx().clone());
                 }
             });
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             if let Some(tab) = self.tab_manager.get_active() {
                 let terminal = TerminalView::new(ui, &mut tab.backend)
                     .set_focus(true)
