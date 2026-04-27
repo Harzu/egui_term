@@ -1,4 +1,3 @@
-use egui::Vec2;
 use egui_term::{
     ColorPalette, PtyEvent, TerminalBackend, TerminalTheme, TerminalView,
 };
@@ -39,13 +38,13 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         if let Ok((_, PtyEvent::Exit)) = self.pty_proxy_receiver.try_recv() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }
 
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+        egui::Panel::top("top_panel").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("ubuntu").clicked() {
                     self.terminal_theme = egui_term::TerminalTheme::default();
@@ -103,14 +102,11 @@ impl eframe::App for App {
             });
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let terminal = TerminalView::new(ui, &mut self.terminal_backend)
                 .set_focus(true)
                 .set_theme(self.terminal_theme.clone())
-                .set_size(Vec2::new(
-                    ui.available_width(),
-                    ui.available_height(),
-                ));
+                .set_size(ui.available_size());
 
             ui.add(terminal);
         });

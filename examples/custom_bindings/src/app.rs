@@ -1,4 +1,4 @@
-use egui::{Key, Modifiers, Vec2};
+use egui::{Key, Modifiers};
 use egui_term::{
     generate_bindings, Binding, BindingAction, InputKind, KeyboardBinding,
     PtyEvent, TerminalBackend, TerminalMode, TerminalView,
@@ -80,22 +80,17 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         if let Ok((_, PtyEvent::Exit)) = self.pty_proxy_receiver.try_recv() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let terminal = TerminalView::new(ui, &mut self.terminal_backend)
-                .set_focus(true)
-                .add_bindings(self.custom_terminal_bindings.clone())
-                .set_size(Vec2::new(
-                    ui.available_width(),
-                    ui.available_height(),
-                ));
+        let terminal = TerminalView::new(ui, &mut self.terminal_backend)
+            .set_focus(true)
+            .add_bindings(self.custom_terminal_bindings.clone())
+            .set_size(ui.available_size());
 
-            ui.add(terminal);
-        });
+        ui.add(terminal);
     }
 }

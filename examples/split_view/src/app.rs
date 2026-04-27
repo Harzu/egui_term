@@ -124,12 +124,12 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         DockArea::new(&mut self.dock_state)
             .show_add_buttons(false)
-            .style(Style::from_egui(ctx.style().as_ref()))
-            .show(
-                ctx,
+            .style(Style::from_egui(ui.ctx().global_style().as_ref()))
+            .show_inside(
+                ui,
                 &mut TabViewer {
                     command_sender: &self.command_sender,
                 },
