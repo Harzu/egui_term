@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 egui = { workspace = true }
-egui_dock = "0.19"
+egui_dock = "0.20"
 eframe = { workspace = true }
 log = { workspace = true }
 egui_term = { path = "../../" }
