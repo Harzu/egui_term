@@ -44,7 +44,7 @@ impl eframe::App for App {
             return;
         }
 
-        egui::Panel::top("top_panel").show_inside(ui, |ui| {
+        egui::Panel::top("top_panel").show(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("ubuntu").clicked() {
                     self.terminal_theme = egui_term::TerminalTheme::default();
@@ -102,7 +102,7 @@ impl eframe::App for App {
             });
         });
 
-        egui::CentralPanel::default().show_inside(ui, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             let terminal = TerminalView::new(ui, &mut self.terminal_backend)
                 .set_focus(true)
                 .set_theme(self.terminal_theme.clone())

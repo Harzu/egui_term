@@ -88,7 +88,7 @@ impl eframe::App for App {
             return;
         }
 
-        egui::Panel::top("top_panel").show_inside(ui, |ui| {
+        egui::Panel::top("top_panel").show(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.button(TERM_FONT_JET_BRAINS_NAME).clicked() {
                     setup_font(ui.ctx(), TERM_FONT_JET_BRAINS_NAME);
@@ -114,7 +114,7 @@ impl eframe::App for App {
             });
         });
 
-        egui::CentralPanel::default().show_inside(ui, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             let terminal = TerminalView::new(ui, &mut self.terminal_backend)
                 .set_focus(true)
                 .set_font(TerminalFont::new(FontSettings {

@@ -39,7 +39,7 @@ impl eframe::App for App {
             }
         }
 
-        egui::Panel::top("top_panel").show_inside(ui, |ui| {
+        egui::Panel::top("top_panel").show(ui, |ui| {
             ui.horizontal(|ui| {
                 let tab_ids = self.tab_manager.get_tab_ids();
                 for id in tab_ids {
@@ -61,7 +61,7 @@ impl eframe::App for App {
             });
         });
 
-        egui::CentralPanel::default().show_inside(ui, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             if let Some(tab) = self.tab_manager.get_active() {
                 let terminal = TerminalView::new(ui, &mut tab.backend)
                     .set_focus(true)
